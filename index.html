@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>IBS · Mission Control</title>
+<title>Innovative Blockchain Solutions · Mission Control</title>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -41,8 +41,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const plusDays = (n) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
-const PSTATUS = { active:{label:"Active",color:"#3fe0a0",glyph:"●"}, hold:{label:"On Hold",color:"#ffb24a",glyph:"◐"}, done:{label:"Done",color:"#3fe0ff",glyph:"✓"} };
-const PSTATUS_ORDER = ["active","hold","done"]; const PSORT = { active:0, hold:1, done:2 };
+const PSTATUS = { active:{label:"Active",color:"#3fe0a0",glyph:"●"}, dev:{label:"In Development",color:"#a78bfa",glyph:"▸"}, hold:{label:"On Hold",color:"#ffb24a",glyph:"◐"}, done:{label:"Done",color:"#3fe0ff",glyph:"✓"} };
+const PSTATUS_ORDER = ["active","dev","hold","done"]; const PSORT = { active:0, dev:1, hold:2, done:3 };
 const PRIORITY = { high:{label:"P1",color:"#ff5d6c"}, medium:{label:"P2",color:"#ffb24a"}, low:{label:"P3",color:"#7b8aa0"} };
 const PRIORITY_ORDER = ["high","medium","low"];
 const DSTATUS = { live:{label:"Live",color:"#3fe0a0",glyph:"●"}, staging:{label:"Staging",color:"#ffb24a",glyph:"◐"}, dev:{label:"Dev",color:"#3fe0ff",glyph:"○"}, parked:{label:"Parked",color:"#7b8aa0",glyph:"·"}, down:{label:"Down",color:"#ff5d6c",glyph:"✕"} };
@@ -60,10 +60,10 @@ const SEED = {
     { id:uid(), text:"Sample to-do — check me off", done:true, priority:"low", due:"", notes:"", project:"" },
   ],
   domains: [
-    { id:uid(), name:"app.ibs.io", purpose:"Production app", registrar:"Cloudflare", host:"Vercel", expiry:plusDays(140), status:"live", link:"https://app.ibs.io", notes:"Primary product domain." },
-    { id:uid(), name:"ibs.io", purpose:"Marketing site", registrar:"Cloudflare", host:"Webflow", expiry:plusDays(18), status:"live", link:"https://ibs.io", notes:"Sample — note the expiry flag. Delete me." },
+    { id:uid(), name:"app.groundworkhq.com", purpose:"Production app", registrar:"Cloudflare", host:"Vercel", expiry:plusDays(140), status:"live", link:"https://app.groundworkhq.com", notes:"Primary product domain." },
+    { id:uid(), name:"groundworkhq.com", purpose:"Marketing site", registrar:"Cloudflare", host:"Webflow", expiry:plusDays(18), status:"live", link:"https://groundworkhq.com", notes:"Sample — note the expiry flag. Delete me." },
   ],
-  credentials: [ { id:uid(), service:"AWS Console", account:"ops@ibs.io", location:"RoboForm", url:"https://console.aws.amazon.com", notes:"MFA on phone. Root key NOT stored here." } ],
+  credentials: [ { id:uid(), service:"AWS Console", account:"ops@groundworkhq.com", location:"RoboForm", url:"https://console.aws.amazon.com", notes:"MFA on phone. Root key NOT stored here." } ],
 };
 
 function migrate(d) {
@@ -94,7 +94,7 @@ const css = `
 .mc .wrap{max-width:1080px;margin:0 auto;padding:0 16px 80px;}
 .mono{font-family:'IBM Plex Mono',monospace;}
 .mc header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,rgba(5,8,14,.97),rgba(5,8,14,.78));backdrop-filter:blur(10px);border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(63,224,255,.12),0 8px 30px rgba(0,0,0,.5);}
-.hbar{max-width:1080px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.hbar{max-width:1080px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
 .brand{display:flex;align-items:center;gap:12px;}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan);animation:pulse 2.4s infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -109,25 +109,28 @@ const css = `
 .hbtns{display:flex;gap:6px;align-items:center;}
 .hbtn{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid var(--border);color:var(--dim);padding:5px 9px;border-radius:6px;cursor:pointer;transition:.15s;}
 .hbtn:hover{color:var(--cyan);border-color:rgba(63,224,255,.5);}
-.alerts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:18px;padding:11px 14px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;}
+.alerts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:9px 13px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;}
 .alerts .lab{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-right:4px;}
 .chip{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;padding:4px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;border:1px solid;cursor:pointer;transition:.15s;}
 .chip:hover{transform:translateY(-1px);}
 .nominal{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#3fe0a0;display:inline-flex;align-items:center;gap:7px;text-shadow:0 0 10px rgba(63,224,160,.4);}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:14px 0 8px;}
-.stat{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:12px 10px;position:relative;overflow:hidden;}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:10px 0 6px;}
+.stat{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:9px 11px;position:relative;overflow:hidden;}
 .stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c,var(--dim));box-shadow:0 0 12px var(--c,transparent);}
-.stat .n{font-family:'Saira Condensed',sans-serif;font-size:30px;font-weight:700;line-height:1;color:var(--c,var(--text));text-shadow:0 0 16px var(--c,transparent);}
-.stat .l{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-top:6px;}
-.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 0 14px;flex-wrap:wrap;}
-.tabs{display:flex;gap:4px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:4px;overflow-x:auto;max-width:100%;}
-.tab{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);background:none;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;}
-.tab.active{background:var(--panel2);color:var(--cyan);box-shadow:inset 0 0 0 1px rgba(63,224,255,.3),0 0 14px rgba(63,224,255,.12);text-shadow:0 0 8px rgba(63,224,255,.4);}
-.tab .c{color:var(--dim);margin-left:6px;}
+.stat .n{font-family:'Saira Condensed',sans-serif;font-size:24px;font-weight:700;line-height:1;color:var(--c,var(--text));text-shadow:0 0 16px var(--c,transparent);}
+.stat .l{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-top:4px;}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 10px;flex-wrap:wrap;}
+.tabs{display:flex;gap:6px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;padding:6px;overflow-x:auto;max-width:100%;}
+.tab{display:inline-flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#9fb0c4;background:transparent;border:1px solid transparent;padding:11px 18px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:.15s;}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.04);}
+.tab.active{background:rgba(63,224,255,.13);color:var(--cyan);border-color:rgba(63,224,255,.5);box-shadow:0 0 18px rgba(63,224,255,.2),inset 0 0 14px rgba(63,224,255,.07);text-shadow:0 0 8px rgba(63,224,255,.5);}
+.tab .ic{font-size:13px;line-height:1;}
+.tab .c{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;font-size:10px;border-radius:10px;background:rgba(255,255,255,.08);color:#9fb0c4;margin-left:2px;}
+.tab.active .c{background:rgba(63,224,255,.25);color:var(--cyan);}
 .add{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:var(--amber);color:#1a1206;border:none;padding:10px 15px;border-radius:7px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap;box-shadow:0 0 14px rgba(255,178,74,.25);}
 .add:hover{box-shadow:0 0 22px rgba(255,178,74,.6);transform:translateY(-1px);}
-.grid{display:grid;gap:12px;}
-.card{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;padding:16px;position:relative;opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.2,1) forwards;}
+.grid{display:grid;gap:9px;}
+.card{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;padding:13px 15px;position:relative;opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.2,1) forwards;}
 .card::before,.card::after{content:'';position:absolute;width:13px;height:13px;border-color:var(--cyan);border-style:solid;opacity:.55;pointer-events:none;}
 .card::before{top:-1px;left:-1px;border-width:1px 0 0 1px;border-top-left-radius:4px;}
 .card::after{bottom:-1px;right:-1px;border-width:0 1px 1px 0;border-bottom-right-radius:4px;}
@@ -135,19 +138,21 @@ const css = `
 .card.flag::before,.card.flag::after{border-color:#ff5d6c;opacity:.7;}
 @keyframes rise{to{opacity:1;transform:none;}}
 .card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
-.card .name{font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:19px;letter-spacing:.02em;line-height:1.1;word-break:break-word;}
+.card .name{font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:16.5px;letter-spacing:.02em;line-height:1.1;word-break:break-word;}
 .badges{display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
 .pill{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.05em;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;}
 .over{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#ff5d6c;letter-spacing:.08em;border:1px solid rgba(255,93,108,.4);padding:2px 6px;border-radius:4px;}
 .over.soon{color:#ffb24a;border-color:rgba(255,178,74,.45);}
-.row{display:flex;gap:8px;font-size:13px;margin-top:10px;}
+.row{display:flex;gap:8px;font-size:13px;margin-top:7px;}
 .row .k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;min-width:82px;padding-top:2px;flex-shrink:0;}
 .row .v{line-height:1.45;word-break:break-word;}
 .row a{color:var(--cyan);text-decoration:none;} .row a:hover{text-decoration:underline;}
-.pdesc{font-size:13.5px;line-height:1.5;color:var(--text);margin-top:11px;}
-.psum{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--dim);background:rgba(63,224,255,.06);border:1px solid var(--border);padding:5px 10px;border-radius:20px;cursor:pointer;display:inline-flex;gap:7px;align-items:center;margin-top:13px;transition:.15s;}
+.pdesc{font-size:13px;line-height:1.45;color:var(--text);margin-top:7px;}
+.psum{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--dim);background:rgba(63,224,255,.06);border:1px solid var(--border);padding:5px 10px;border-radius:20px;cursor:pointer;display:inline-flex;gap:7px;align-items:center;transition:.15s;}
 .psum:hover{color:var(--cyan);border-color:rgba(63,224,255,.4);} .psum b{color:var(--cyan);font-weight:600;}
-.actions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);}
+.actions{display:flex;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border);}
+.cardfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border);flex-wrap:wrap;}
+.cardfoot .actions{margin:0;padding:0;border-top:none;}
 .mini{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;background:none;border:1px solid var(--border);color:var(--dim);padding:6px 12px;border-radius:6px;cursor:pointer;transition:.15s;}
 .mini:hover{color:var(--cyan);border-color:rgba(63,224,255,.5);}
 .mini.del:hover{color:#ff5d6c;border-color:rgba(255,93,108,.5);} .mini.confirm{color:#ff5d6c;border-color:#ff5d6c;}
@@ -232,12 +237,12 @@ function AuthScreen() {
   };
   return (
     <div className="mc"><style>{css}</style><div className="scan" /><div className="authwrap"><div className="modal">
-      <h2>IBS · Mission Control</h2>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>Innovative Blockchain Solutions</div><h2>Mission Control</h2>
       {sent ? (
         <p className="sub">Magic link sent to <code>{email}</code>. Open it on this device to sign in.</p>
       ) : (<>
         <p className="sub">Enter your email and we'll send a one-tap sign-in link.</p>
-        <div className="field"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="you@ibs.io" autoFocus /></div>
+        <div className="field"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="you@yourcompany.com" autoFocus /></div>
         {err && <p className="sub" style={{ color: "#ff8593" }}>{err}</p>}
         <button className="btn go" onClick={send}>Send magic link</button>
       </>)}
@@ -282,7 +287,7 @@ function MissionControl({ session }) {
   const addQuickTask = () => { const text=taskInput.trim(); if(!text)return; const project=taskFilter&&taskFilter!=="__none"?taskFilter:""; persist({ ...data, tasks:[...data.tasks,{id:uid(),text,done:false,priority:"medium",due:"",notes:"",project}] }); setTaskInput(""); };
   const viewProjectTasks = (pid) => { setTaskFilter(pid); setTab("task"); };
   const clearCompleted = () => { const inScope=(t)=>!taskFilter?true:taskFilter==="__none"?!t.project:t.project===taskFilter; persist({ ...data, tasks: data.tasks.filter((t)=>!(t.done&&inScope(t))) }); setClearConfirm(false); };
-  const exportJSON = () => { const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=window.URL.createObjectURL(blob); a.download="ibs-mission-control-"+todayStr()+".json"; a.click(); };
+  const exportJSON = () => { const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=window.URL.createObjectURL(blob); a.download="mission-control-"+todayStr()+".json"; a.click(); };
   const importJSON = (file) => { const r=new FileReader(); r.onload=()=>{ try{ persist(migrate(JSON.parse(r.result))); }catch(e){ alert("Could not read that file."); } }; r.readAsText(file); };
 
   const projects = [...data.projects].sort((a,b)=>(PSORT[a.status]??0)-(PSORT[b.status]??0)||a.name.localeCompare(b.name));
@@ -322,7 +327,7 @@ function MissionControl({ session }) {
       <style>{css}</style>
       <div className="scan" />
       <header><div className="hbar">
-        <div className="brand"><span className="dot" /><span className="badge">IBS</span><div className="lockup"><span className="eyebrow">Innovative Blockchain Solutions</span><span className="title">Mission <b>Control</b></span></div></div>
+        <div className="brand"><span className="dot" /><div className="lockup"><span className="eyebrow">Innovative Blockchain Solutions</span><span className="title">Mission <b>Control</b></span></div></div>
         <div className="hud-right">
           <div className="clock"><div className="t mono">{timeStr} <span style={{ color:"var(--dim)" }}>LOCAL</span></div><div>{dateStr}</div></div>
           <div className="hbtns">
@@ -338,17 +343,17 @@ function MissionControl({ session }) {
         {!loading && (
           <div className="alerts"><span className="lab">Attention</span>
             {alerts.length===0 ? <span className="nominal">◇ ALL SYSTEMS NOMINAL</span> : alerts.map((a,i)=>(
-              <button key={i} className="chip" onClick={()=>{ if(a.go==="task")setTaskFilter(""); setTab(a.go); }} style={a.sev==="hi"?{color:"#ff8593",borderColor:"rgba(255,93,108,.45)",background:"rgba(255,93,108,.1)"}:{color:"#ffc36b",borderColor:"rgba(255,178,74,.4)",background:"rgba(255,178,74,.1)"}}>{a.sev==="hi"?"▲":"◆"} {a.t}</button>
+              <button key={i} className="chip" onClick={()=>{ if(a.go==="task")setTaskFilter(""); setTab(a.go); }} style={{color:"#ff8593",borderColor:"rgba(255,93,108,.45)",background:"rgba(255,93,108,.1)"}}>{a.sev==="hi"?"▲":"◆"} {a.t}</button>
             ))}
           </div>
         )}
         <div className="stats">{statSets[tab].map((s,i)=>(<div className="stat" key={i} style={{ "--c":s.c }}><div className="n">{s.n}</div><div className="l">{s.l}</div></div>))}</div>
         <div className="bar">
           <div className="tabs">
-            <button className={`tab ${tab==="proj"?"active":""}`} onClick={()=>setTab("proj")}>Projects <span className="c">{data.projects.length}</span></button>
-            <button className={`tab ${tab==="task"?"active":""}`} onClick={()=>setTab("task")}>To-Dos <span className="c">{data.tasks.filter((t)=>!t.done).length}</span></button>
-            <button className={`tab ${tab==="dom"?"active":""}`} onClick={()=>setTab("dom")}>Domains <span className="c">{data.domains.length}</span></button>
-            <button className={`tab ${tab==="reg"?"active":""}`} onClick={()=>setTab("reg")}>Registry <span className="c">{data.credentials.length}</span></button>
+            <button className={`tab ${tab==="proj"?"active":""}`} onClick={()=>setTab("proj")}><span className="ic">▦</span>Projects <span className="c">{data.projects.length}</span></button>
+            <button className={`tab ${tab==="task"?"active":""}`} onClick={()=>setTab("task")}><span className="ic">✓</span>To-Dos <span className="c">{data.tasks.filter((t)=>!t.done).length}</span></button>
+            <button className={`tab ${tab==="dom"?"active":""}`} onClick={()=>setTab("dom")}><span className="ic">◎</span>Domains <span className="c">{data.domains.length}</span></button>
+            <button className={`tab ${tab==="reg"?"active":""}`} onClick={()=>setTab("reg")}><span className="ic">🗝</span>Registry <span className="c">{data.credentials.length}</span></button>
           </div>
           <button className="add" onClick={()=>setModal({type:newType,item:null})}>+ {newLabel}</button>
         </div>
@@ -384,8 +389,10 @@ function ProjectCard({ p, i, openCount, doneCount, onViewTasks, onEdit, onDelete
     <div className="top"><div className="name">{p.name}</div><div className="badges"><span className="pill" style={{ color:st.color, background:st.color+"16", border:`1px solid ${st.color}3a` }}><span>{st.glyph}</span>{st.label}</span></div></div>
     {p.notes && <div className="pdesc">{p.notes}</div>}
     {p.link && <div className="row"><span className="k">Link</span><span className="v"><a href={p.link} target="_blank" rel="noreferrer">{p.link}</a></span></div>}
-    <div><button className="psum" onClick={onViewTasks}>{openCount+doneCount===0?"▢ No to-dos yet — add some":<><b>{openCount}</b> open{doneCount?` · ${doneCount} done`:""} →</>}</button></div>
-    <CardActions onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+    <div className="cardfoot">
+      <button className="psum" onClick={onViewTasks}>{openCount+doneCount===0?"▢ No to-dos yet — add some":<><b>{openCount}</b> open{doneCount?` · ${doneCount} done`:""} →</>}</button>
+      <CardActions onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+    </div>
   </div>);
 }
 function TaskRow({ t, i, projectName, onToggle, onEdit, onDelete, confirming, onCancelConfirm }) {
@@ -443,7 +450,7 @@ function Editor({ type, item, projects, onClose, onSave }) {
       <div className="two"><div className="field"><label>Priority</label><select value={f.priority} onChange={(e)=>set("priority",e.target.value)}>{PRIORITY_ORDER.map((k)=><option key={k} value={k}>{PRIORITY[k].label} — {k}</option>)}</select></div><div className="field"><label>Due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} /></div></div>
       <div className="field"><label>Project (optional)</label><select value={f.project} onChange={(e)=>set("project",e.target.value)}><option value="">— None —</option>{projects.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
       <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} /></div></>)}
-    {type==="domain"&&(<><div className="field"><label>Domain / Site</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. app.ibs.io" autoFocus /></div>
+    {type==="domain"&&(<><div className="field"><label>Domain / Site</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. app.groundworkhq.com" autoFocus /></div>
       <div className="field"><label>Purpose</label><input value={f.purpose} onChange={(e)=>set("purpose",e.target.value)} placeholder="e.g. Production app" /></div>
       <div className="two"><div className="field"><label>Registrar</label><input value={f.registrar} onChange={(e)=>set("registrar",e.target.value)} placeholder="e.g. Cloudflare" /></div><div className="field"><label>Host / Deploy</label><input value={f.host} onChange={(e)=>set("host",e.target.value)} placeholder="e.g. Vercel, AWS" /></div></div>
       <div className="two"><div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{DSTATUS_ORDER.map((k)=><option key={k} value={k}>{DSTATUS[k].label}</option>)}</select></div><div className="field"><label>Expiry / Renewal</label><input type="date" value={f.expiry} onChange={(e)=>set("expiry",e.target.value)} /></div></div>
