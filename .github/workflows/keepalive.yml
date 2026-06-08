@@ -1,1 +1,20 @@
+name: Keep Supabase Awake
 
+# Pings the database every 3 days so the free project never auto-pauses.
+on:
+  schedule:
+    - cron: "30 13 */3 * *"   # 13:30 UTC, every 3rd day
+  workflow_dispatch:           # also lets you run it by hand from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Knock on Supabase
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://kdgbivcufoarmvckworj.supabase.co/rest/v1/mc_state?select=user_id&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZ2JpdmN1Zm9hcm12Y2t3b3JqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDU1OTIsImV4cCI6MjA5NjUyMTU5Mn0.6dce94KWoA38dyisoLY9jZ-Ao8O5DjwaB-gUVJL-CC4")
+          echo "Supabase responded with HTTP $CODE"
+          # 200 (data) or 206/empty are all fine — any response means the DB was reached.
+          if [ "$CODE" -ge 500 ]; then echo "Server error"; exit 1; fi
