@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Innovative Blockchain Solutions · Mission Control</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>html,body,#root{height:100%;margin:0;background:#05080e;}</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function(){
+  function show(html){ var r=document.getElementById('root'); if(r && !r.firstChild){ r.innerHTML=html; } }
+  window.addEventListener('error', function(e){
+    show('<pre style="color:#ff8593;font-family:monospace;padding:24px;white-space:pre-wrap;font-size:13px">Something failed to load:\n\n'+((e&&e.message)||(e&&e.target&&e.target.src)||'unknown')+'\n\nTry a hard refresh (Cmd+Shift+R).</pre>');
+  }, true);
+  setTimeout(function(){ show('<div style="color:#9fb0c4;font-family:monospace;padding:24px;line-height:1.7;font-size:14px">App did not start.<br><br>1) Hard refresh: Cmd+Shift+R (Mac) or Ctrl+Shift+R.<br>2) Make sure a file named <b>.nojekyll</b> is in your repo root.<br>3) Open the Console (right-click &rarr; Inspect &rarr; Console) and read the red line.</div>'); }, 6000);
+})();
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useRef } = React;
+
+/* ============================================================
+   1) PASTE YOUR SUPABASE PROJECT VALUES HERE
+   Supabase dashboard → Project Settings → API
+   ============================================================ */
+const SUPABASE_URL = "https://kdgbivcufoarmvckworj.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkZ2JpdmN1Zm9hcm12Y2t3b3JqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDU1OTIsImV4cCI6MjA5NjUyMTU5Mn0.6dce94KWoA38dyisoLY9jZ-Ao8O5DjwaB-gUVJL-CC4";
+/* ============================================================ */
+
+const configured = !SUPABASE_URL.includes("YOUR") && !SUPABASE_ANON_KEY.includes("YOUR");
+const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const DAY = 86400000;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const plusDays = (n) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
+
+const PSTATUS = { active:{label:"Active",color:"#3fe0a0",glyph:"●"}, dev:{label:"In Development",color:"#a78bfa",glyph:"▸"}, hold:{label:"On Hold",color:"#ffb24a",glyph:"◐"}, done:{label:"Done",color:"#3fe0ff",glyph:"✓"} };
+const PSTATUS_ORDER = ["active","dev","hold","done"]; const PSORT = { active:0, dev:1, hold:2, done:3 };
+const PRIORITY = { high:{label:"P1",color:"#ff5d6c"}, medium:{label:"P2",color:"#ffb24a"}, low:{label:"P3",color:"#7b8aa0"} };
+const PRIORITY_ORDER = ["high","medium","low"];
+const DSTATUS = { live:{label:"Live",color:"#3fe0a0",glyph:"●"}, staging:{label:"Staging",color:"#ffb24a",glyph:"◐"}, dev:{label:"Dev",color:"#3fe0ff",glyph:"○"}, parked:{label:"Parked",color:"#7b8aa0",glyph:"·"}, down:{label:"Down",color:"#ff5d6c",glyph:"✕"} };
+const DSTATUS_ORDER = ["live","staging","dev","parked","down"];
+
+const P_DASH = uid(), P_SOC = uid();
+const SEED = {
+  projects: [
+    { id:P_DASH, name:"Mission Control Dashboard", status:"active", notes:"Lightweight tracker — projects, to-dos, domains, keys. Delete me once you're set up.", link:"" },
+    { id:P_SOC, name:"SOC 2 Type II Audit", status:"active", notes:"Auditor kickoff done. Collecting evidence from eng.", link:"" },
+  ],
+  tasks: [
+    { id:uid(), text:"Call auditor re: access reviews", done:false, priority:"high", due:todayStr(), notes:"", project:P_SOC },
+    { id:uid(), text:"Approve Q3 vendor invoices", done:false, priority:"medium", due:plusDays(2), notes:"", project:"" },
+    { id:uid(), text:"Sample to-do — check me off", done:true, priority:"low", due:"", notes:"", project:"" },
+  ],
+  domains: [
+    { id:uid(), name:"app.groundworkhq.com", purpose:"Production app", registrar:"Cloudflare", host:"Vercel", expiry:plusDays(140), status:"live", link:"https://app.groundworkhq.com", notes:"Primary product domain." },
+    { id:uid(), name:"groundworkhq.com", purpose:"Marketing site", registrar:"Cloudflare", host:"Webflow", expiry:plusDays(18), status:"live", link:"https://groundworkhq.com", notes:"Sample — note the expiry flag. Delete me." },
+  ],
+  credentials: [ { id:uid(), service:"AWS Console", account:"ops@groundworkhq.com", location:"RoboForm", url:"https://console.aws.amazon.com", notes:"MFA on phone. Root key NOT stored here." } ],
+};
+
+function migrate(d) {
+  const pmap = { ontrack:"active", atrisk:"active", blocked:"active", backlog:"hold", done:"done", active:"active", hold:"hold" };
+  const projects = (d.projects||[]).map((p)=>{ const status=pmap[p.status]||"active"; const extra=[]; if(p.deadline)extra.push("Due "+p.deadline); if(p.nextAction)extra.push("Next: "+p.nextAction); const notes=[p.notes,...extra].filter(Boolean).join(" · "); return { id:p.id||uid(), name:p.name||"Untitled", status, notes, link:p.link||"" }; });
+  const tasks = (d.tasks||[]).map((t)=>({ id:t.id||uid(), text:t.text||"", done:!!t.done, priority:t.priority||"medium", due:t.due||"", notes:t.notes||"", project:t.project||"" }));
+  return { projects, tasks, domains:d.domains||[], credentials:d.credentials||[] };
+}
+
+async function loadRemote(userId) { const { data, error } = await sb.from("mc_state").select("data").eq("user_id", userId).maybeSingle(); if (error) throw error; return data ? data.data : null; }
+async function saveRemote(userId, payload) { const { error } = await sb.from("mc_state").upsert({ user_id:userId, data:payload, updated_at:new Date().toISOString() }); if (error) console.error(error); }
+
+function domainAlert(d){ if(!d.expiry) return null; const diff=Math.round((new Date(d.expiry+"T00:00:00")-new Date(todayStr()+"T00:00:00"))/DAY); if(diff<0) return {kind:"expired",days:diff}; if(diff<=30) return {kind:"soon",days:diff}; return null; }
+function domScore(d){ const a=domainAlert(d); let s=0; if(a&&a.kind==="expired")s+=100; if(d.status==="down")s+=60; if(a&&a.kind==="soon")s+=40-Math.min(a.days,30); return s; }
+function taskUrgency(t){ let s=0; if(t.due){ if(t.due<todayStr())s+=50; else if(t.due===todayStr())s+=30; } s+={high:9,medium:5,low:1}[t.priority]||0; return s; }
+function fmtDate(s){ return new Date(s+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+.mc *{box-sizing:border-box;margin:0;padding:0;}
+.mc{--bg:#05080e;--panel:rgba(13,19,29,.66);--panel2:rgba(20,28,42,.8);--border:rgba(80,170,220,.18);--text:#d6e2ee;--dim:#62748c;--amber:#ffb24a;--cyan:#3fe0ff;position:relative;overflow:hidden;font-family:'IBM Plex Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;width:100%;background-image:radial-gradient(1000px 600px at 82% -12%,rgba(255,178,74,.10),transparent 60%),radial-gradient(800px 600px at -12% 112%,rgba(63,224,255,.10),transparent 60%);-webkit-font-smoothing:antialiased;}
+.mc::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background-image:linear-gradient(rgba(63,224,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(63,224,255,.055) 1px,transparent 1px);background-size:42px 42px;animation:drift 22s linear infinite;-webkit-mask-image:radial-gradient(circle at 50% 25%,#000,transparent 78%);mask-image:radial-gradient(circle at 50% 25%,#000,transparent 78%);}
+@keyframes drift{to{background-position:42px 42px;}}
+.scan{position:fixed;inset:0;pointer-events:none;z-index:3;overflow:hidden;background:repeating-linear-gradient(0deg,transparent 0,transparent 2px,rgba(63,224,255,.018) 3px,transparent 4px);}
+.scan::after{content:'';position:absolute;left:0;right:0;height:160px;top:-160px;background:linear-gradient(180deg,transparent,rgba(63,224,255,.05),transparent);animation:sweep 8s linear infinite;}
+@keyframes sweep{to{top:120%;}}
+.mc>*{position:relative;z-index:1;}
+.mc .wrap{max-width:1080px;margin:0 auto;padding:0 16px 80px;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+.mc header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,rgba(5,8,14,.97),rgba(5,8,14,.78));backdrop-filter:blur(10px);border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(63,224,255,.12),0 8px 30px rgba(0,0,0,.5);}
+.hbar{max-width:1080px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:12px;}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan);animation:pulse 2.4s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.badge{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:18px;letter-spacing:.06em;color:var(--amber);border:1px solid rgba(255,178,74,.6);border-radius:7px;padding:5px 9px;line-height:1;background:rgba(255,178,74,.08);box-shadow:0 0 16px rgba(255,178,74,.25),inset 0 0 12px rgba(255,178,74,.08);}
+.lockup{display:flex;flex-direction:column;gap:3px;}
+.title{font-family:'Saira Condensed',sans-serif;font-weight:700;letter-spacing:.16em;font-size:20px;text-transform:uppercase;text-shadow:0 0 18px rgba(63,224,255,.25);}
+.title b{color:var(--amber);text-shadow:0 0 18px rgba(255,178,74,.5);}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--cyan);text-transform:uppercase;opacity:.8;}
+.hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+.clock{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim);text-align:right;line-height:1.4;letter-spacing:.06em;}
+.clock .t{color:var(--cyan);font-size:14px;text-shadow:0 0 10px rgba(63,224,255,.4);}
+.hbtns{display:flex;gap:6px;align-items:center;}
+.hbtn{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid var(--border);color:var(--dim);padding:5px 9px;border-radius:6px;cursor:pointer;transition:.15s;}
+.hbtn:hover{color:var(--cyan);border-color:rgba(63,224,255,.5);}
+.alerts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding:9px 13px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;}
+.alerts .lab{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-right:4px;}
+.chip{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;padding:4px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:6px;border:1px solid;cursor:pointer;transition:.15s;}
+.chip:hover{transform:translateY(-1px);}
+.nominal{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:#3fe0a0;display:inline-flex;align-items:center;gap:7px;text-shadow:0 0 10px rgba(63,224,160,.4);}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px;margin:10px 0 6px;}
+.stat{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:9px 11px;position:relative;overflow:hidden;}
+.stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c,var(--dim));box-shadow:0 0 12px var(--c,transparent);}
+.stat .n{font-family:'Saira Condensed',sans-serif;font-size:24px;font-weight:700;line-height:1;color:var(--c,var(--text));text-shadow:0 0 16px var(--c,transparent);}
+.stat .l{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-top:4px;}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 10px;flex-wrap:wrap;}
+.tabs{display:flex;gap:6px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;padding:6px;overflow-x:auto;max-width:100%;}
+.tab{display:inline-flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#9fb0c4;background:transparent;border:1px solid transparent;padding:11px 18px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:.15s;}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.04);}
+.tab.active{background:rgba(63,224,255,.13);color:var(--cyan);border-color:rgba(63,224,255,.5);box-shadow:0 0 18px rgba(63,224,255,.2),inset 0 0 14px rgba(63,224,255,.07);text-shadow:0 0 8px rgba(63,224,255,.5);}
+.tab .ic{font-size:13px;line-height:1;}
+.tab .c{display:inline-flex;align-items:center;justify-content:center;min-width:19px;height:19px;padding:0 6px;font-size:10px;border-radius:10px;background:rgba(255,255,255,.08);color:#9fb0c4;margin-left:2px;}
+.tab.active .c{background:rgba(63,224,255,.25);color:var(--cyan);}
+.add{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:var(--amber);color:#1a1206;border:none;padding:10px 15px;border-radius:7px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap;box-shadow:0 0 14px rgba(255,178,74,.25);}
+.add:hover{box-shadow:0 0 22px rgba(255,178,74,.6);transform:translateY(-1px);}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));align-items:stretch;}
+.grid-list{display:grid;gap:9px;}
+.card{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;padding:13px 15px;position:relative;display:flex;flex-direction:column;opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.2,1) forwards;}
+.card::before,.card::after{content:'';position:absolute;width:13px;height:13px;border-color:var(--cyan);border-style:solid;opacity:.55;pointer-events:none;}
+.card::before{top:-1px;left:-1px;border-width:1px 0 0 1px;border-top-left-radius:4px;}
+.card::after{bottom:-1px;right:-1px;border-width:0 1px 1px 0;border-bottom-right-radius:4px;}
+.card.flag{border-color:rgba(255,93,108,.45);box-shadow:0 0 22px rgba(255,93,108,.1);}
+.card.flag::before,.card.flag::after{border-color:#ff5d6c;opacity:.7;}
+@keyframes rise{to{opacity:1;transform:none;}}
+.card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.card .name{font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:16.5px;letter-spacing:.02em;line-height:1.1;word-break:break-word;}
+.badges{display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
+.pill{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.05em;padding:3px 9px;border-radius:20px;display:inline-flex;align-items:center;gap:5px;}
+.over{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#ff5d6c;letter-spacing:.08em;border:1px solid rgba(255,93,108,.4);padding:2px 6px;border-radius:4px;}
+.over.soon{color:#ffb24a;border-color:rgba(255,178,74,.45);}
+.row{display:flex;gap:8px;font-size:13px;margin-top:7px;}
+.row .k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;min-width:82px;padding-top:2px;flex-shrink:0;}
+.row .v{line-height:1.45;word-break:break-word;}
+.row a{color:var(--cyan);text-decoration:none;} .row a:hover{text-decoration:underline;}
+.pdesc{font-size:13px;line-height:1.45;color:var(--text);margin-top:7px;}
+.psum{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.05em;color:var(--dim);background:none;border:none;padding:0;cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:.15s;}
+.psum:hover{color:var(--cyan);border-color:rgba(63,224,255,.4);} .psum b{color:var(--cyan);font-weight:600;}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.cardfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;flex-wrap:wrap;}
+.cardfoot .actions{margin:0;padding:0;border-top:none;}
+.card>.cardfoot,.card>.actions{margin-top:auto;}
+.linkbtn{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;margin-top:9px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--cyan);background:rgba(63,224,255,.08);border:1px solid rgba(63,224,255,.25);padding:5px 11px;border-radius:7px;text-decoration:none;transition:.15s;}
+.linkbtn:hover{background:rgba(63,224,255,.16);}
+.mini{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;background:none;border:1px solid var(--border);color:var(--dim);padding:6px 12px;border-radius:6px;cursor:pointer;transition:.15s;}
+.mini:hover{color:var(--cyan);border-color:rgba(63,224,255,.5);}
+.mini.del:hover{color:#ff5d6c;border-color:rgba(255,93,108,.5);} .mini.confirm{color:#ff5d6c;border-color:#ff5d6c;}
+.mini.open{display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:var(--cyan);border-color:rgba(63,224,255,.4);}
+.mini.open:hover{color:var(--cyan);border-color:rgba(63,224,255,.65);background:rgba(63,224,255,.08);}
+.qarow{display:flex;gap:8px;margin-bottom:10px;}
+.qarow input{flex:1;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:12px 14px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:14px;outline:none;}
+.qarow input:focus{border-color:var(--cyan);box-shadow:0 0 14px rgba(63,224,255,.15);}
+.tfilter{margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.tfilter select{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px 12px;border-radius:7px;letter-spacing:.04em;outline:none;}
+.task{display:flex;align-items:center;gap:12px;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:12px 14px;position:relative;opacity:0;transform:translateY(8px);animation:rise .4s ease forwards;}
+.task.flag{border-color:rgba(255,93,108,.4);} .task.done{opacity:.5;}
+.check{flex-shrink:0;width:22px;height:22px;border-radius:6px;border:1.5px solid var(--dim);background:none;color:#05080e;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;transition:.15s;}
+.check.on{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 12px rgba(63,224,255,.5);}
+.tbody{flex:1;min-width:0;} .ttext{font-size:14px;line-height:1.35;word-break:break-word;} .task.done .ttext{text-decoration:line-through;}
+.tmeta{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap;}
+.tdot{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor;}
+.tdue{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;color:var(--dim);}
+.tdue.od{color:#ff5d6c;} .tdue.today{color:var(--amber);}
+.tchip{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.04em;color:#3fe0ff;background:rgba(63,224,255,.1);border:1px solid rgba(63,224,255,.25);padding:2px 7px;border-radius:20px;}
+.tacts{display:flex;gap:6px;flex-shrink:0;}
+.empty{text-align:center;padding:48px 20px;border:1px dashed var(--border);border-radius:10px;}
+.empty p{color:var(--dim);font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.06em;margin-bottom:18px;}
+.note{display:flex;gap:10px;align-items:flex-start;background:rgba(63,224,255,.06);border:1px solid rgba(63,224,255,.22);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12px;color:#a6dcef;line-height:1.5;} .note b{color:#d4f0fb;}
+.scrim{position:fixed;inset:0;background:rgba(3,5,9,.78);backdrop-filter:blur(4px);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:40px 14px;overflow-y:auto;animation:fade .2s ease;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{background:linear-gradient(180deg,rgba(18,25,38,.96),rgba(11,16,25,.96));border:1px solid var(--border);border-radius:12px;width:100%;max-width:480px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.7),0 0 40px rgba(63,224,255,.08);position:relative;}
+.modal::before,.modal::after{content:'';position:absolute;width:16px;height:16px;border-color:var(--cyan);border-style:solid;opacity:.6;}
+.modal::before{top:-1px;left:-1px;border-width:1px 0 0 1px;border-top-left-radius:5px;}
+.modal::after{bottom:-1px;right:-1px;border-width:0 1px 1px 0;border-bottom-right-radius:5px;}
+.modal h2{font-family:'Saira Condensed',sans-serif;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:18px;margin-bottom:18px;color:var(--cyan);text-shadow:0 0 14px rgba(63,224,255,.3);}
+.field{margin-bottom:14px;}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px;}
+.field input,.field select,.field textarea{width:100%;background:rgba(0,0,0,.35);border:1px solid var(--border);border-radius:7px;padding:10px 12px;color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:14px;outline:none;}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--cyan);box-shadow:0 0 12px rgba(63,224,255,.15);}
+.field textarea{resize:vertical;min-height:62px;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:8px;}
+.btn{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:10px 18px;border-radius:7px;cursor:pointer;border:1px solid var(--border);}
+.btn.ghost{background:none;color:var(--dim);} .btn.ghost:hover{color:var(--text);}
+.btn.go{background:var(--amber);color:#1a1206;border-color:var(--amber);font-weight:600;box-shadow:0 0 14px rgba(255,178,74,.3);width:100%;} .btn.go:hover{box-shadow:0 0 22px rgba(255,178,74,.6);}
+.sync{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:.08em;text-align:center;margin-top:26px;} .sync .ok{color:#3fe0a0;}
+.authwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+.authwrap .modal{max-width:400px;}
+.authwrap .sub{font-size:13px;color:var(--dim);line-height:1.55;margin-bottom:18px;}
+.authwrap code{font-family:'IBM Plex Mono',monospace;color:var(--cyan);background:rgba(63,224,255,.08);padding:1px 5px;border-radius:4px;font-size:12px;}
+.mc.light{ --bg:#eef1f6; --panel:#ffffff; --panel2:#e9eef5; --border:#d3dbe7; --text:#1b2433; --dim:#6b7789; --amber:#c9760f; --cyan:#0e8fb0; background-image:none; }
+.mc.light::before{ background-image:linear-gradient(rgba(20,40,80,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(20,40,80,.045) 1px,transparent 1px); }
+.mc.light .scan{ display:none; }
+.mc.light header{ background:rgba(255,255,255,.92); box-shadow:0 1px 0 var(--border),0 2px 10px rgba(20,30,50,.05); }
+.mc.light .title,.mc.light .title b,.mc.light .clock .t,.mc.light .stat .n,.mc.light .eyebrow,.mc.light .nominal{ text-shadow:none; }
+.mc.light .stat,.mc.light .alerts,.mc.light .tabs,.mc.light .card,.mc.light .task{ box-shadow:0 1px 2px rgba(20,30,50,.06); }
+.mc.light .stat::before,.mc.light .fill,.mc.light .check.on,.mc.light .add,.mc.light .tab.active,.mc.light .btn.go{ box-shadow:none; }
+.mc.light .stat .n{ color:var(--text); }
+.mc.light .tab.active{ background:rgba(14,143,176,.13); border-color:rgba(14,143,176,.42); }
+.mc.light .track{ background:rgba(20,30,50,.07); }
+.mc.light .field input,.mc.light .field select,.mc.light .field textarea,.mc.light .qarow input,.mc.light .tfilter select{ background:#ffffff; }
+.mc.light .modal{ background:#ffffff; }
+.mc.light .pill,.mc.light .pri{ color:var(--text)!important; }
+.mc.light .chip{ color:#c01a2b!important; }
+.mc.light .nominal{ color:#127a4a; }
+.mc.light .over{ color:#cf1a2b; border-color:rgba(207,26,43,.4); }
+.mc.light .over.soon{ color:#b9740a; border-color:rgba(185,116,10,.4); }
+.mc.light .tdue.od{ color:#cf1a2b; } .mc.light .tdue.today{ color:#b9740a; }
+.mc.light .tchip{ color:#0e8fb0; background:rgba(14,143,176,.1); border-color:rgba(14,143,176,.3); }
+.mc.light .note{ background:rgba(14,143,176,.07); border-color:rgba(14,143,176,.25); color:#0b5a70; } .mc.light .note b{ color:#073f4f; }
+.mc.light .sync .ok{ color:#127a4a; }
+.mc.light .add,.mc.light .btn.go{ color:#ffffff; }
+.mc.light .add:hover,.mc.light .btn.go:hover{ box-shadow:0 2px 10px rgba(201,118,15,.35); }
+.mc.light .linkbtn{ color:#0e8fb0; background:rgba(14,143,176,.08); border-color:rgba(14,143,176,.28); }
+.mc.light .linkbtn:hover{ background:rgba(14,143,176,.16); }
+.mc.light .mini.open{ color:#0e8fb0; border-color:rgba(14,143,176,.4); }
+.mc.light .mini.open:hover{ background:rgba(14,143,176,.1); border-color:rgba(14,143,176,.6); }
+@media (max-width:640px){.title{font-size:17px;}.eyebrow{font-size:8px;letter-spacing:.14em;}.two{grid-template-columns:1fr;}}
+`;
+
+function App() {
+  const [phase, setPhase] = useState("checking"); // checking | setup | auth | app
+  const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    if (!configured) { setPhase("setup"); return; }
+    sb.auth.getSession().then(({ data }) => { setSession(data.session); setPhase(data.session ? "app" : "auth"); });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => { setSession(s); setPhase(s ? "app" : "auth"); });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  if (phase === "checking") return <div className="mc"><div className="scan" /><div style={{ paddingTop: 120, textAlign: "center", fontFamily: "monospace", color: "#62748c" }}>· · · ESTABLISHING UPLINK · · ·</div></div>;
+  if (phase === "setup") return <SetupScreen />;
+  if (phase === "auth") return <AuthScreen />;
+  return <MissionControl session={session} />;
+}
+
+function SetupScreen() {
+  return (
+    <div className="mc"><style>{css}</style><div className="scan" /><div className="authwrap"><div className="modal">
+      <h2>Setup Required</h2>
+      <p className="sub">Open <code>index.html</code> and paste your Supabase project URL and anon key into the config block near the top (from <b>Project Settings → API</b>). Then create the table with the SQL from the setup notes, and reload.</p>
+    </div></div></div>
+  );
+}
+
+function AuthScreen() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState("");
+  const send = async () => {
+    if (!email.trim()) return;
+    const { error } = await sb.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: window.location.href.split("#")[0] } });
+    if (error) setErr(error.message); else setSent(true);
+  };
+  return (
+    <div className="mc"><style>{css}</style><div className="scan" /><div className="authwrap"><div className="modal">
+      <div className="eyebrow" style={{ marginBottom: 8 }}>Innovative Blockchain Solutions</div><h2>Mission Control</h2>
+      {sent ? (
+        <p className="sub">Magic link sent to <code>{email}</code>. Open it on this device to sign in.</p>
+      ) : (<>
+        <p className="sub">Enter your email and we'll send a one-tap sign-in link.</p>
+        <div className="field"><label>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="you@yourcompany.com" autoFocus /></div>
+        {err && <p className="sub" style={{ color: "#ff8593" }}>{err}</p>}
+        <button className="btn go" onClick={send}>Send magic link</button>
+      </>)}
+    </div></div></div>
+  );
+}
+
+function MissionControl({ session }) {
+  const userId = session.user.id;
+  const [data, setData] = useState({ projects: [], tasks: [], domains: [], credentials: [] });
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("proj");
+  const [modal, setModal] = useState(null);
+  const [now, setNow] = useState(new Date());
+  const [confirmId, setConfirmId] = useState(null);
+  const [savedAt, setSavedAt] = useState(null);
+  const [taskInput, setTaskInput] = useState("");
+  const [taskFilter, setTaskFilter] = useState("");
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const fileRef = useRef(null);
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("mc-theme") || "dark"; } catch (e) { return "dark"; } });
+  const toggleTheme = () => { const t = theme === "dark" ? "light" : "dark"; setTheme(t); try { localStorage.setItem("mc-theme", t); } catch (e) {} };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const remote = await loadRemote(userId);
+        if (!alive) return;
+        if (remote) { const m = migrate(remote); setData(m); }
+        else { setData(SEED); await saveRemote(userId, SEED); }
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [userId]);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+
+  const persist = useCallback((next) => { setData(next); saveRemote(userId, next); setSavedAt(Date.now()); }, [userId]);
+  const keyFor = (type) => ({ project:"projects", task:"tasks", domain:"domains", cred:"credentials" }[type]);
+  const saveItem = (type, item) => { const key=keyFor(type); const list=data[key]; const exists=list.some((x)=>x.id===item.id); persist({ ...data, [key]: exists?list.map((x)=>x.id===item.id?item:x):[...list,item] }); setModal(null); };
+  const remove = (type, id) => { const key=keyFor(type); persist({ ...data, [key]: data[key].filter((x)=>x.id!==id) }); setConfirmId(null); };
+  const toggleTask = (id) => persist({ ...data, tasks: data.tasks.map((t)=>t.id===id?{...t,done:!t.done}:t) });
+  const addQuickTask = () => { const text=taskInput.trim(); if(!text)return; const project=taskFilter&&taskFilter!=="__none"?taskFilter:""; persist({ ...data, tasks:[...data.tasks,{id:uid(),text,done:false,priority:"medium",due:"",notes:"",project}] }); setTaskInput(""); };
+  const viewProjectTasks = (pid) => { setTaskFilter(pid); setTab("task"); };
+  const clearCompleted = () => { const inScope=(t)=>!taskFilter?true:taskFilter==="__none"?!t.project:t.project===taskFilter; persist({ ...data, tasks: data.tasks.filter((t)=>!(t.done&&inScope(t))) }); setClearConfirm(false); };
+  const exportJSON = () => { const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=window.URL.createObjectURL(blob); a.download="mission-control-"+todayStr()+".json"; a.click(); };
+  const importJSON = (file) => { const r=new FileReader(); r.onload=()=>{ try{ persist(migrate(JSON.parse(r.result))); }catch(e){ alert("Could not read that file."); } }; r.readAsText(file); };
+
+  const projects = [...data.projects].sort((a,b)=>(PSORT[a.status]??0)-(PSORT[b.status]??0)||a.name.localeCompare(b.name));
+  const domains = [...data.domains].sort((a,b)=>domScore(b)-domScore(a));
+  const tasks = [...data.tasks].sort((a,b)=>(a.done!==b.done?(a.done?1:-1):taskUrgency(b)-taskUrgency(a)));
+  const projName = (id) => (data.projects.find((p)=>p.id===id)||{}).name;
+  const visibleTasks = tasks.filter((t)=>!taskFilter?true:taskFilter==="__none"?!t.project:t.project===taskFilter);
+  const doneVisibleCount = visibleTasks.filter((t)=>t.done).length;
+
+  const alerts=[];
+  const odTasks=data.tasks.filter((t)=>!t.done&&t.due&&t.due<todayStr()).length;
+  const todayTasks=data.tasks.filter((t)=>!t.done&&t.due===todayStr()).length;
+  const expired=data.domains.filter((d)=>{const a=domainAlert(d);return a&&a.kind==="expired";}).length;
+  const expiring=data.domains.filter((d)=>{const a=domainAlert(d);return a&&a.kind==="soon";}).length;
+  const down=data.domains.filter((d)=>d.status==="down").length;
+  if(odTasks)alerts.push({t:`${odTasks} to-do${odTasks>1?"s":""} overdue`,sev:"hi",go:"task"});
+  if(expired)alerts.push({t:`${expired} domain${expired>1?"s":""} expired`,sev:"hi",go:"dom"});
+  if(down)alerts.push({t:`${down} site${down>1?"s":""} down`,sev:"hi",go:"dom"});
+  if(expiring)alerts.push({t:`${expiring} expiring \u226430d`,sev:"med",go:"dom"});
+  if(todayTasks)alerts.push({t:`${todayTasks} due today`,sev:"med",go:"task"});
+
+  const statSets={
+    proj:[{n:data.projects.length,l:"Total",c:"#d6e2ee"},{n:data.projects.filter((p)=>p.status==="active").length,l:"Active",c:PSTATUS.active.color},{n:data.projects.filter((p)=>p.status==="hold").length,l:"On Hold",c:PSTATUS.hold.color},{n:data.projects.filter((p)=>p.status==="done").length,l:"Done",c:PSTATUS.done.color}],
+    task:[{n:data.tasks.filter((t)=>!t.done).length,l:"Open",c:"#d6e2ee"},{n:todayTasks,l:"Due Today",c:"#ffb24a"},{n:odTasks,l:"Overdue",c:"#ff5d6c"},{n:data.tasks.filter((t)=>t.done).length,l:"Done",c:"#3fe0ff"}],
+    dom:[{n:data.domains.length,l:"Total",c:"#d6e2ee"},{n:data.domains.filter((d)=>d.status==="live").length,l:"Live",c:DSTATUS.live.color},{n:expiring,l:"Expiring",c:"#ffb24a"},{n:expired,l:"Expired",c:"#ff5d6c"},{n:down,l:"Down",c:DSTATUS.down.color}],
+    reg:[{n:data.credentials.length,l:"Entries",c:"#d6e2ee"},{n:data.credentials.filter((c)=>(c.location||"").toLowerCase().includes("roboform")).length,l:"In RoboForm",c:"#3fe0ff"},{n:data.credentials.filter((c)=>c.location&&!(c.location||"").toLowerCase().includes("roboform")).length,l:"Elsewhere",c:"#7b8aa0"},{n:data.credentials.filter((c)=>c.url).length,l:"With URL",c:"#3fe0a0"}],
+  };
+
+  const pad=(n)=>String(n).padStart(2,"0");
+  const timeStr=`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const dateStr=now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"}).toUpperCase();
+  const newType={proj:"project",task:"task",dom:"domain",reg:"cred"}[tab];
+  const newLabel={proj:"New Project",task:"New To-Do",dom:"New Domain",reg:"New Entry"}[tab];
+
+  return (
+    <div className={"mc" + (theme === "light" ? " light" : "")}>
+      <style>{css}</style>
+      <div className="scan" />
+      <header><div className="hbar">
+        <div className="brand"><span className="dot" /><div className="lockup"><span className="eyebrow">Innovative Blockchain Solutions</span><span className="title">Mission <b>Control</b></span></div></div>
+        <div className="hud-right">
+          <div className="clock"><div className="t mono">{timeStr} <span style={{ color:"var(--dim)" }}>LOCAL</span></div><div>{dateStr}</div></div>
+          <div className="hbtns">
+            <button className="hbtn" onClick={toggleTheme}>{theme==="dark"?"☀ Light":"☾ Dark"}</button>
+            <button className="hbtn" onClick={exportJSON}>⤓ Export</button>
+            <button className="hbtn" onClick={() => fileRef.current && fileRef.current.click()}>⤒ Import</button>
+            <button className="hbtn" onClick={() => sb.auth.signOut()}>Sign out</button>
+            <input ref={fileRef} type="file" accept="application/json" style={{ display:"none" }} onChange={(e) => e.target.files[0] && importJSON(e.target.files[0])} />
+          </div>
+        </div>
+      </div></header>
+
+      <div className="wrap">
+        {!loading && (
+          <div className="alerts"><span className="lab">Attention</span>
+            {alerts.length===0 ? <span className="nominal">◇ ALL SYSTEMS NOMINAL</span> : alerts.map((a,i)=>(
+              <button key={i} className="chip" onClick={()=>{ if(a.go==="task")setTaskFilter(""); setTab(a.go); }} style={{color:"#ff8593",borderColor:"rgba(255,93,108,.45)",background:"rgba(255,93,108,.1)"}}>{a.sev==="hi"?"▲":"◆"} {a.t}</button>
+            ))}
+          </div>
+        )}
+        <div className="stats">{statSets[tab].map((s,i)=>(<div className="stat" key={i} style={{ "--c":s.c }}><div className="n">{s.n}</div><div className="l">{s.l}</div></div>))}</div>
+        <div className="bar">
+          <div className="tabs">
+            <button className={`tab ${tab==="proj"?"active":""}`} onClick={()=>setTab("proj")}><span className="ic">▦</span>Projects <span className="c">{data.projects.length}</span></button>
+            <button className={`tab ${tab==="task"?"active":""}`} onClick={()=>setTab("task")}><span className="ic">✓</span>To-Dos <span className="c">{data.tasks.filter((t)=>!t.done).length}</span></button>
+            <button className={`tab ${tab==="dom"?"active":""}`} onClick={()=>setTab("dom")}><span className="ic">◎</span>Domains <span className="c">{data.domains.length}</span></button>
+            <button className={`tab ${tab==="reg"?"active":""}`} onClick={()=>setTab("reg")}><span className="ic">🗝</span>Registry <span className="c">{data.credentials.length}</span></button>
+          </div>
+          <button className="add" onClick={()=>setModal({type:newType,item:null})}>+ {newLabel}</button>
+        </div>
+
+        {loading ? <div className="empty"><p>· · · SYNCING · · ·</p></div>
+        : tab==="proj" ? (projects.length===0 ? <div className="empty"><p>NO PROJECTS YET</p><button className="add" onClick={()=>setModal({type:"project",item:null})}>+ Add First Project</button></div>
+          : <div className="grid">{projects.map((p,i)=>{ const rel=data.tasks.filter((t)=>t.project===p.id); return <ProjectCard key={p.id} p={p} i={i} openCount={rel.filter((t)=>!t.done).length} doneCount={rel.filter((t)=>t.done).length} onViewTasks={()=>viewProjectTasks(p.id)} onEdit={()=>setModal({type:"project",item:p})} onDelete={()=>confirmId===p.id?remove("project",p.id):setConfirmId(p.id)} confirming={confirmId===p.id} onCancelConfirm={()=>setConfirmId(null)} />; })}</div>)
+        : tab==="task" ? (<>
+            <div className="qarow"><input value={taskInput} onChange={(e)=>setTaskInput(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addQuickTask()} placeholder={taskFilter&&taskFilter!=="__none"?`Quick add to "${projName(taskFilter)}" — Enter`:"Quick capture a to-do — type and hit Enter"} /><button className="add" onClick={addQuickTask}>Add</button></div>
+            <div className="tfilter"><select value={taskFilter} onChange={(e)=>{setTaskFilter(e.target.value);setClearConfirm(false);}}><option value="">All to-dos</option><option value="__none">Unassigned</option>{data.projects.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select>{doneVisibleCount>0 && <button className={`mini ${clearConfirm?"confirm":""}`} onClick={()=>clearConfirm?clearCompleted():setClearConfirm(true)}>{clearConfirm?`Confirm — clear ${doneVisibleCount}?`:`Clear completed (${doneVisibleCount})`}</button>}</div>
+            {visibleTasks.length===0 ? <div className="empty"><p>{taskFilter?"NOTHING HERE — CAPTURE ONE ABOVE":"NO TO-DOS — CAPTURE ONE ABOVE"}</p></div>
+              : <div className="grid-list">{visibleTasks.map((t,i)=>(<TaskRow key={t.id} t={t} i={i} projectName={projName(t.project)} onToggle={()=>toggleTask(t.id)} onEdit={()=>setModal({type:"task",item:t})} onDelete={()=>confirmId===t.id?remove("task",t.id):setConfirmId(t.id)} confirming={confirmId===t.id} onCancelConfirm={()=>setConfirmId(null)} />))}</div>}
+          </>)
+        : tab==="dom" ? (domains.length===0 ? <div className="empty"><p>NO DOMAINS REGISTERED</p><button className="add" onClick={()=>setModal({type:"domain",item:null})}>+ Add First Domain</button></div>
+          : <div className="grid">{domains.map((d,i)=>(<DomainCard key={d.id} d={d} i={i} onEdit={()=>setModal({type:"domain",item:d})} onDelete={()=>confirmId===d.id?remove("domain",d.id):setConfirmId(d.id)} confirming={confirmId===d.id} onCancelConfirm={()=>setConfirmId(null)} />))}</div>)
+        : (<>
+            <div className="note"><span>🔒</span><span><b>References only — no secrets stored here.</b> This logs which service, the account, and where the real password/key lives. Keep actual secrets in RoboForm.</span></div>
+            {data.credentials.length===0 ? <div className="empty"><p>NO REGISTRY ENTRIES</p><button className="add" onClick={()=>setModal({type:"cred",item:null})}>+ Add First Entry</button></div>
+              : <div className="grid">{data.credentials.map((c,i)=>(<CredCard key={c.id} c={c} i={i} onEdit={()=>setModal({type:"cred",item:c})} onDelete={()=>confirmId===c.id?remove("cred",c.id):setConfirmId(c.id)} confirming={confirmId===c.id} onCancelConfirm={()=>setConfirmId(null)} />))}</div>}
+          </>)}
+
+        <div className="sync">● <span className="ok">SYNCED TO SUPABASE</span> — {session.user.email}{savedAt?" · last write "+new Date(savedAt).toLocaleTimeString():""}</div>
+      </div>
+
+      {modal && <Editor type={modal.type} item={modal.item} projects={data.projects} onClose={()=>setModal(null)} onSave={(it)=>saveItem(modal.type,it)} />}
+    </div>
+  );
+}
+
+function ProjectCard({ p, i, openCount, doneCount, onViewTasks, onEdit, onDelete, confirming, onCancelConfirm }) {
+  const st = PSTATUS[p.status] || PSTATUS.active;
+  return (<div className="card" style={{ animationDelay:`${i*55}ms` }}>
+    <div className="top"><div className="name">{p.name}</div><div className="badges"><span className="pill" style={{ color:st.color, background:st.color+"16", border:`1px solid ${st.color}3a` }}><span>{st.glyph}</span>{st.label}</span></div></div>
+    {p.notes && <div className="pdesc">{p.notes}</div>}
+    <div className="cardfoot">
+      {(openCount+doneCount)>0 && <button className="psum" onClick={onViewTasks}><b>{openCount}</b> open{doneCount?` · ${doneCount} done`:""} →</button>}
+      <CardActions link={p.link} onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+    </div>
+  </div>);
+}
+function TaskRow({ t, i, projectName, onToggle, onEdit, onDelete, confirming, onCancelConfirm }) {
+  const pr = PRIORITY[t.priority] || PRIORITY.low;
+  const overdue = !t.done && t.due && t.due < todayStr(); const isToday = !t.done && t.due === todayStr();
+  return (<div className={`task ${t.done?"done":""} ${overdue?"flag":""}`} style={{ animationDelay:`${i*35}ms` }}>
+    <button className={`check ${t.done?"on":""}`} onClick={onToggle}>{t.done?"✓":""}</button>
+    <div className="tbody"><div className="ttext">{t.text}</div><div className="tmeta"><span className="tdot" style={{ background:pr.color, color:pr.color }} />{t.due && <span className={`tdue ${overdue?"od":isToday?"today":""}`}>{overdue?"OVERDUE · "+fmtDate(t.due):isToday?"TODAY":fmtDate(t.due)}</span>}{projectName && <span className="tchip">◇ {projectName}</span>}</div></div>
+    <div className="tacts"><button className="mini" onClick={onEdit}>Edit</button><button className={`mini del ${confirming?"confirm":""}`} onClick={onDelete}>{confirming?"Confirm?":"Del"}</button>{confirming && <button className="mini" onClick={onCancelConfirm}>Cancel</button>}</div>
+  </div>);
+}
+function DomainCard({ d, i, onEdit, onDelete, confirming, onCancelConfirm }) {
+  const st = DSTATUS[d.status] || DSTATUS.parked; const alert = domainAlert(d);
+  return (<div className={`card ${alert?"flag":""}`} style={{ animationDelay:`${i*55}ms` }}>
+    <div className="top"><div className="name">{d.name}</div><div className="badges"><span className="pill" style={{ color:st.color, background:st.color+"16", border:`1px solid ${st.color}3a` }}><span>{st.glyph}</span>{st.label}</span></div></div>
+    {d.purpose && <div className="row" style={{ marginTop:12 }}><span className="k">Purpose</span><span className="v">{d.purpose}</span></div>}
+    {(d.registrar||d.host) && <div className="row"><span className="k">Registrar</span><span className="v">{d.registrar||"—"}{d.host && <span style={{ color:"var(--dim)" }}>  ·  host: {d.host}</span>}</span></div>}
+    {d.expiry && <div className="row"><span className="k">Expires</span><span className="v">{fmtDate(d.expiry)}{alert&&alert.kind==="expired"&&<span className="over" style={{ marginLeft:8 }}>EXPIRED {Math.abs(alert.days)}d AGO</span>}{alert&&alert.kind==="soon"&&<span className="over soon" style={{ marginLeft:8 }}>{alert.days===0?"TODAY":`${alert.days}d LEFT`}</span>}</span></div>}
+    {d.notes && <div className="row"><span className="k">Notes</span><span className="v" style={{ color:"var(--dim)" }}>{d.notes}</span></div>}
+    <CardActions link={d.link} onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+  </div>);
+}
+function CredCard({ c, i, onEdit, onDelete, confirming, onCancelConfirm }) {
+  return (<div className="card" style={{ animationDelay:`${i*55}ms` }}>
+    <div className="top"><div className="name">{c.service}</div>{c.location && <span className="pill" style={{ color:"#3fe0ff", background:"rgba(63,224,255,.12)", border:"1px solid rgba(63,224,255,.3)" }}>🗝 {c.location}</span>}</div>
+    {c.account && <div className="row" style={{ marginTop:12 }}><span className="k">Account</span><span className="v mono">{c.account}</span></div>}
+    {c.notes && <div className="row"><span className="k">Notes</span><span className="v" style={{ color:"var(--dim)" }}>{c.notes}</span></div>}
+    <CardActions link={c.url} linkLabel="Open login" onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+  </div>);
+}
+function CardActions({ link, linkLabel, onEdit, onDelete, confirming, onCancelConfirm }) {
+  return (<div className="actions">{link && <a className="mini open" href={link} target="_blank" rel="noreferrer" title={link}>↗ {linkLabel||"Open"}</a>}<button className="mini" onClick={onEdit}>Edit</button><button className={`mini del ${confirming?"confirm":""}`} onClick={onDelete}>{confirming?"Confirm?":"Delete"}</button>{confirming && <button className="mini" onClick={onCancelConfirm}>Cancel</button>}</div>);
+}
+
+function Editor({ type, item, projects, onClose, onSave }) {
+  const blank = {
+    project:{ id:uid(), name:"", status:"active", notes:"", link:"" },
+    task:{ id:uid(), text:"", done:false, priority:"medium", due:"", notes:"", project:"" },
+    domain:{ id:uid(), name:"", purpose:"", registrar:"", host:"", expiry:"", status:"live", link:"", notes:"" },
+    cred:{ id:uid(), service:"", account:"", location:"RoboForm", url:"", notes:"" },
+  };
+  const [f, setF] = useState(item ? { ...item } : blank[type]);
+  const set = (k,v) => setF((p)=>({ ...p, [k]:v }));
+  const valid = type==="project"?f.name.trim():type==="task"?f.text.trim():type==="domain"?f.name.trim():f.service.trim();
+  const heading = { project:"Project", task:"To-Do", domain:"Domain / Site", cred:"Registry Entry" }[type];
+  return (<div className="scrim" onClick={onClose}><div className="modal" onClick={(e)=>e.stopPropagation()}>
+    <h2>{item?"Edit":"New"} {heading}</h2>
+    {type==="project"&&(<><div className="field"><label>Project Name</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. Series A raise" autoFocus /></div>
+      <div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{PSTATUS_ORDER.map((k)=><option key={k} value={k}>{PSTATUS[k].label}</option>)}</select></div>
+      <div className="field"><label>Where it stands</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="A line or two on the current state" /></div>
+      <div className="field"><label>Link</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div></>)}
+    {type==="task"&&(<><div className="field"><label>To-Do</label><input value={f.text} onChange={(e)=>set("text",e.target.value)} placeholder="What needs doing?" autoFocus /></div>
+      <div className="two"><div className="field"><label>Priority</label><select value={f.priority} onChange={(e)=>set("priority",e.target.value)}>{PRIORITY_ORDER.map((k)=><option key={k} value={k}>{PRIORITY[k].label} — {k}</option>)}</select></div><div className="field"><label>Due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} /></div></div>
+      <div className="field"><label>Project (optional)</label><select value={f.project} onChange={(e)=>set("project",e.target.value)}><option value="">— None —</option>{projects.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+      <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} /></div></>)}
+    {type==="domain"&&(<><div className="field"><label>Domain / Site</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. app.groundworkhq.com" autoFocus /></div>
+      <div className="field"><label>Purpose</label><input value={f.purpose} onChange={(e)=>set("purpose",e.target.value)} placeholder="e.g. Production app" /></div>
+      <div className="two"><div className="field"><label>Registrar</label><input value={f.registrar} onChange={(e)=>set("registrar",e.target.value)} placeholder="e.g. Cloudflare" /></div><div className="field"><label>Host / Deploy</label><input value={f.host} onChange={(e)=>set("host",e.target.value)} placeholder="e.g. Vercel, AWS" /></div></div>
+      <div className="two"><div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{DSTATUS_ORDER.map((k)=><option key={k} value={k}>{DSTATUS[k].label}</option>)}</select></div><div className="field"><label>Expiry / Renewal</label><input type="date" value={f.expiry} onChange={(e)=>set("expiry",e.target.value)} /></div></div>
+      <div className="field"><label>Link</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div>
+      <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="DNS, SSL, owner, etc." /></div></>)}
+    {type==="cred"&&(<><div className="field"><label>Service</label><input value={f.service} onChange={(e)=>set("service",e.target.value)} placeholder="e.g. GitHub, Stripe, AWS" autoFocus /></div>
+      <div className="field"><label>Account / Username</label><input value={f.account} onChange={(e)=>set("account",e.target.value)} placeholder="email or handle" /></div>
+      <div className="field"><label>Where the secret lives</label><input value={f.location} onChange={(e)=>set("location",e.target.value)} placeholder="e.g. RoboForm, .env file" /></div>
+      <div className="field"><label>URL</label><input value={f.url} onChange={(e)=>set("url",e.target.value)} placeholder="https://" /></div>
+      <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="MFA method, rotation date, etc." /></div></>)}
+    <div className="mfoot"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn go" disabled={!valid} style={{ opacity:valid?1:0.4, width:"auto" }} onClick={()=>valid&&onSave(f)}>{item?"Save":"Add"}</button></div>
+  </div></div>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
