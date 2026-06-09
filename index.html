@@ -152,6 +152,8 @@ const css = `
 .subcount{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--cyan);background:rgba(63,224,255,.1);border:1px solid rgba(63,224,255,.25);padding:2px 7px;border-radius:20px;cursor:pointer;flex-shrink:0;}
 .lrow.child{margin-left:26px;}
 .lrow.child .lname{font-size:15px;font-weight:500;}
+.lrow.folder .lname{font-weight:700;letter-spacing:.01em;}
+.lrow.folder{background:rgba(63,224,255,.035);}
 .mc input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5;cursor:pointer;}
 .mc input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1;}
 .mc.light input[type=date]::-webkit-calendar-picker-indicator{filter:none;opacity:.6;}
@@ -359,8 +361,14 @@ function MissionControl({ session }) {
   const projSort = (a,b)=>(PSORT[a.status]??0)-(PSORT[b.status]??0)||a.name.localeCompare(b.name);
   const projects = [...data.projects].sort(projSort);
   const projectsById = Object.fromEntries(data.projects.map((p)=>[p.id,p]));
-  const topProjects = data.projects.filter((p)=>!p.parent || !projectsById[p.parent]).sort(projSort);
   const childrenOf = (pid)=> data.projects.filter((p)=>p.parent===pid && projectsById[p.parent]).sort(projSort);
+  const isParent = (p)=> childrenOf(p.id).length>0;
+  const topProjects = data.projects.filter((p)=>!p.parent || !projectsById[p.parent]).sort((a,b)=>{
+    const pa=isParent(a), pb=isParent(b);
+    if(pa!==pb) return pa?-1:1;          // folders first
+    if(pa) return a.name.localeCompare(b.name); // both folders: by name
+    return projSort(a,b);                // regular projects: by status, then name
+  });
   const renderProj = (p, child) => {
     const rel = data.tasks.filter((t)=>t.project===p.id);
     const kids = child ? [] : childrenOf(p.id);
@@ -461,13 +469,13 @@ function MissionControl({ session }) {
 
 function ProjectRow({ p, openCount, doneCount, child, hasChildren, childCount, expanded, onToggleExpand, onViewTasks, onEdit, onDelete, confirming, onCancelConfirm }) {
   const st = PSTATUS[p.status] || PSTATUS.dev;
-  return (<div className={"lrow"+(child?" child":"")}>
+  return (<div className={"lrow"+(child?" child":"")+(hasChildren?" folder":"")}>
     {hasChildren ? <button className="caret" onClick={onToggleExpand} title={expanded?"Collapse":"Expand"}>{expanded?"▾":"▸"}</button> : <span className="cstub">{child?"↳":""}</span>}
     <span className="lname">{p.name}</span>
     {hasChildren && <span className="subcount" onClick={onToggleExpand}>{childCount} sub</span>}
     <span className="lmeta">{p.notes||""}</span>
     {(openCount+doneCount)>0 && <span className="lcount" onClick={onViewTasks} title="View to-dos">{openCount} open</span>}
-    <span className="lstat" style={{ color:st.color, background:st.color+"1c", border:`1px solid ${st.color}3a` }}>{st.glyph} {st.label}</span>
+    {!hasChildren && <span className="lstat" style={{ color:st.color, background:st.color+"1c", border:`1px solid ${st.color}3a` }}>{st.glyph} {st.label}</span>}
     <RowActions link={p.link} onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
   </div>);
 }
