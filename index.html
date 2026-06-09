@@ -41,8 +41,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const plusDays = (n) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
 
-const PSTATUS = { active:{label:"Active",color:"#3fe0a0",glyph:"●"}, dev:{label:"In Development",color:"#a78bfa",glyph:"▸"}, hold:{label:"On Hold",color:"#ffb24a",glyph:"◐"}, done:{label:"Done",color:"#3fe0ff",glyph:"✓"} };
-const PSTATUS_ORDER = ["active","dev","hold","done"]; const PSORT = { active:0, dev:1, hold:2, done:3 };
+const PSTATUS = { dev:{label:"In Development",color:"#a78bfa",glyph:"▸"}, live:{label:"Live",color:"#3fe0a0",glyph:"●"}, hold:{label:"On Hold",color:"#ffb24a",glyph:"◐"} };
+const PSTATUS_ORDER = ["dev","live","hold"]; const PSORT = { dev:0, live:1, hold:2 };
 const PRIORITY = { high:{label:"P1",color:"#ff5d6c"}, medium:{label:"P2",color:"#ffb24a"}, low:{label:"P3",color:"#7b8aa0"} };
 const PRIORITY_ORDER = ["high","medium","low"];
 const DSTATUS = { live:{label:"Live",color:"#3fe0a0",glyph:"●"}, staging:{label:"Staging",color:"#ffb24a",glyph:"◐"}, dev:{label:"Dev",color:"#3fe0ff",glyph:"○"}, parked:{label:"Parked",color:"#7b8aa0",glyph:"·"}, down:{label:"Down",color:"#ff5d6c",glyph:"✕"} };
@@ -67,8 +67,8 @@ const SEED = {
 };
 
 function migrate(d) {
-  const pmap = { ontrack:"active", atrisk:"active", blocked:"active", backlog:"hold", done:"done", active:"active", hold:"hold" };
-  const projects = (d.projects||[]).map((p)=>{ const status=pmap[p.status]||"active"; const extra=[]; if(p.deadline)extra.push("Due "+p.deadline); if(p.nextAction)extra.push("Next: "+p.nextAction); const notes=[p.notes,...extra].filter(Boolean).join(" · "); return { id:p.id||uid(), name:p.name||"Untitled", status, notes, link:p.link||"" }; });
+  const pmap = { ontrack:"live", atrisk:"dev", blocked:"dev", backlog:"hold", done:"live", active:"dev", live:"live", dev:"dev", hold:"hold" };
+  const projects = (d.projects||[]).map((p)=>{ const status=pmap[p.status]||"dev"; const extra=[]; if(p.deadline)extra.push("Due "+p.deadline); if(p.nextAction)extra.push("Next: "+p.nextAction); const notes=[p.notes,...extra].filter(Boolean).join(" · "); return { id:p.id||uid(), name:p.name||"Untitled", status, notes, link:p.link||"", parent:p.parent||"" }; });
   const tasks = (d.tasks||[]).map((t)=>({ id:t.id||uid(), text:t.text||"", done:!!t.done, priority:t.priority||"medium", due:t.due||"", notes:t.notes||"", project:t.project||"" }));
   return { projects, tasks, domains:d.domains||[], credentials:d.credentials||[] };
 }
@@ -138,7 +138,7 @@ const css = `
 .lname{font-family:'Saira Condensed',sans-serif;font-weight:600;font-size:16px;letter-spacing:.01em;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50%;}
 .lmeta{flex:1;min-width:0;font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .lstat{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
-.lcount{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--dim);cursor:pointer;white-space:nowrap;flex-shrink:0;}
+.lcount{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--cyan);font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0;}
 .lcount:hover{color:var(--cyan);}
 .lacts{display:flex;gap:3px;align-items:center;flex-shrink:0;}
 .iconbtn{min-width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:6px;background:none;color:var(--dim);cursor:pointer;font-size:13px;text-decoration:none;transition:.12s;font-family:'IBM Plex Mono',monospace;}
@@ -146,6 +146,15 @@ const css = `
 .iconbtn.del:hover{color:#ff5d6c;border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.07);}
 .iconbtn.confirm{color:#ff5d6c;border-color:#ff5d6c;padding:0 9px;font-size:10px;letter-spacing:.05em;text-transform:uppercase;}
 @media (max-width:720px){.lmeta{display:none;}}
+.caret{background:none;border:none;color:var(--dim);cursor:pointer;font-size:11px;width:16px;padding:0;flex-shrink:0;line-height:1;}
+.caret:hover{color:var(--cyan);}
+.cstub{width:16px;flex-shrink:0;color:var(--dim);font-size:12px;text-align:center;}
+.subcount{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--cyan);background:rgba(63,224,255,.1);border:1px solid rgba(63,224,255,.25);padding:2px 7px;border-radius:20px;cursor:pointer;flex-shrink:0;}
+.lrow.child{margin-left:26px;}
+.lrow.child .lname{font-size:15px;font-weight:500;}
+.mc input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5;cursor:pointer;}
+.mc input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1;}
+.mc.light input[type=date]::-webkit-calendar-picker-indicator{filter:none;opacity:.6;}
 .card{background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:10px;padding:13px 15px;position:relative;display:flex;flex-direction:column;opacity:0;transform:translateY(10px);animation:rise .5s cubic-bezier(.2,.7,.2,1) forwards;}
 .card::before,.card::after{content:'';position:absolute;width:13px;height:13px;border-color:var(--cyan);border-style:solid;opacity:.55;pointer-events:none;}
 .card::before{top:-1px;left:-1px;border-width:1px 0 0 1px;border-top-left-radius:4px;}
@@ -249,6 +258,7 @@ const css = `
 .mc.light .lrow:hover{ border-color:rgba(14,143,176,.35); }
 .mc.light .lstat{ color:var(--text)!important; }
 .mc.light .iconbtn:hover{ color:#0e8fb0; border-color:rgba(14,143,176,.4); background:rgba(14,143,176,.08); }
+.mc.light .subcount{ color:#0e8fb0; background:rgba(14,143,176,.1); border-color:rgba(14,143,176,.28); }
 @media (max-width:640px){.title{font-size:17px;}.eyebrow{font-size:8px;letter-spacing:.14em;}.two{grid-template-columns:1fr;}}
 `;
 
@@ -313,6 +323,7 @@ function MissionControl({ session }) {
   const [savedAt, setSavedAt] = useState(null);
   const [taskInput, setTaskInput] = useState("");
   const [taskFilter, setTaskFilter] = useState("");
+  const [expanded, setExpanded] = useState(() => new Set());
   const [clearConfirm, setClearConfirm] = useState(false);
   const fileRef = useRef(null);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("mc-theme") || "dark"; } catch (e) { return "dark"; } });
@@ -340,11 +351,21 @@ function MissionControl({ session }) {
   const toggleTask = (id) => persist({ ...data, tasks: data.tasks.map((t)=>t.id===id?{...t,done:!t.done}:t) });
   const addQuickTask = () => { const text=taskInput.trim(); if(!text)return; const project=taskFilter&&taskFilter!=="__none"?taskFilter:""; persist({ ...data, tasks:[...data.tasks,{id:uid(),text,done:false,priority:"medium",due:"",notes:"",project}] }); setTaskInput(""); };
   const viewProjectTasks = (pid) => { setTaskFilter(pid); setTab("task"); };
+  const toggleExpand = (id) => setExpanded((s)=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
   const clearCompleted = () => { const inScope=(t)=>!taskFilter?true:taskFilter==="__none"?!t.project:t.project===taskFilter; persist({ ...data, tasks: data.tasks.filter((t)=>!(t.done&&inScope(t))) }); setClearConfirm(false); };
   const exportJSON = () => { const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=window.URL.createObjectURL(blob); a.download="mission-control-"+todayStr()+".json"; a.click(); };
   const importJSON = (file) => { const r=new FileReader(); r.onload=()=>{ try{ persist(migrate(JSON.parse(r.result))); }catch(e){ alert("Could not read that file."); } }; r.readAsText(file); };
 
-  const projects = [...data.projects].sort((a,b)=>(PSORT[a.status]??0)-(PSORT[b.status]??0)||a.name.localeCompare(b.name));
+  const projSort = (a,b)=>(PSORT[a.status]??0)-(PSORT[b.status]??0)||a.name.localeCompare(b.name);
+  const projects = [...data.projects].sort(projSort);
+  const projectsById = Object.fromEntries(data.projects.map((p)=>[p.id,p]));
+  const topProjects = data.projects.filter((p)=>!p.parent || !projectsById[p.parent]).sort(projSort);
+  const childrenOf = (pid)=> data.projects.filter((p)=>p.parent===pid && projectsById[p.parent]).sort(projSort);
+  const renderProj = (p, child) => {
+    const rel = data.tasks.filter((t)=>t.project===p.id);
+    const kids = child ? [] : childrenOf(p.id);
+    return <ProjectRow key={p.id} p={p} child={child} hasChildren={kids.length>0} childCount={kids.length} expanded={expanded.has(p.id)} openCount={rel.filter((t)=>!t.done).length} doneCount={rel.filter((t)=>t.done).length} onToggleExpand={()=>toggleExpand(p.id)} onViewTasks={()=>viewProjectTasks(p.id)} onEdit={()=>setModal({type:"project",item:p})} onDelete={()=>confirmId===p.id?remove("project",p.id):setConfirmId(p.id)} confirming={confirmId===p.id} onCancelConfirm={()=>setConfirmId(null)} />;
+  };
   const domains = [...data.domains].sort((a,b)=>domScore(b)-domScore(a));
   const tasks = [...data.tasks].sort((a,b)=>(a.done!==b.done?(a.done?1:-1):taskUrgency(b)-taskUrgency(a)));
   const projName = (id) => (data.projects.find((p)=>p.id===id)||{}).name;
@@ -364,7 +385,7 @@ function MissionControl({ session }) {
   if(todayTasks)alerts.push({t:`${todayTasks} due today`,sev:"med",go:"task"});
 
   const statSets={
-    proj:[{n:data.projects.length,l:"Total",c:"#d6e2ee"},{n:data.projects.filter((p)=>p.status==="active").length,l:"Active",c:PSTATUS.active.color},{n:data.projects.filter((p)=>p.status==="hold").length,l:"On Hold",c:PSTATUS.hold.color},{n:data.projects.filter((p)=>p.status==="done").length,l:"Done",c:PSTATUS.done.color}],
+    proj:[{n:data.projects.length,l:"Total",c:"#d6e2ee"},{n:data.projects.filter((p)=>p.status==="dev").length,l:"In Dev",c:PSTATUS.dev.color},{n:data.projects.filter((p)=>p.status==="live").length,l:"Live",c:PSTATUS.live.color},{n:data.projects.filter((p)=>p.status==="hold").length,l:"On Hold",c:PSTATUS.hold.color}],
     task:[{n:data.tasks.filter((t)=>!t.done).length,l:"Open",c:"#d6e2ee"},{n:todayTasks,l:"Due Today",c:"#ffb24a"},{n:odTasks,l:"Overdue",c:"#ff5d6c"},{n:data.tasks.filter((t)=>t.done).length,l:"Done",c:"#3fe0ff"}],
     dom:[{n:data.domains.length,l:"Total",c:"#d6e2ee"},{n:data.domains.filter((d)=>d.status==="live").length,l:"Live",c:DSTATUS.live.color},{n:expiring,l:"Expiring",c:"#ffb24a"},{n:expired,l:"Expired",c:"#ff5d6c"},{n:down,l:"Down",c:DSTATUS.down.color}],
     reg:[{n:data.credentials.length,l:"Entries",c:"#d6e2ee"},{n:data.credentials.filter((c)=>(c.location||"").toLowerCase().includes("roboform")).length,l:"In RoboForm",c:"#3fe0ff"},{n:data.credentials.filter((c)=>c.location&&!(c.location||"").toLowerCase().includes("roboform")).length,l:"Elsewhere",c:"#7b8aa0"},{n:data.credentials.filter((c)=>c.url).length,l:"With URL",c:"#3fe0a0"}],
@@ -415,7 +436,7 @@ function MissionControl({ session }) {
 
         {loading ? <div className="empty"><p>· · · SYNCING · · ·</p></div>
         : tab==="proj" ? (projects.length===0 ? <div className="empty"><p>NO PROJECTS YET</p><button className="add" onClick={()=>setModal({type:"project",item:null})}>+ Add First Project</button></div>
-          : <div className="list">{projects.map((p,i)=>{ const rel=data.tasks.filter((t)=>t.project===p.id); return <ProjectRow key={p.id} p={p} openCount={rel.filter((t)=>!t.done).length} doneCount={rel.filter((t)=>t.done).length} onViewTasks={()=>viewProjectTasks(p.id)} onEdit={()=>setModal({type:"project",item:p})} onDelete={()=>confirmId===p.id?remove("project",p.id):setConfirmId(p.id)} confirming={confirmId===p.id} onCancelConfirm={()=>setConfirmId(null)} />; })}</div>)
+          : <div className="list">{topProjects.map((p)=>{ const kids=childrenOf(p.id); return <React.Fragment key={p.id}>{renderProj(p,false)}{expanded.has(p.id) && kids.map((k)=>renderProj(k,true))}</React.Fragment>; })}</div>)
         : tab==="task" ? (<>
             <div className="qarow"><input value={taskInput} onChange={(e)=>setTaskInput(e.target.value)} onKeyDown={(e)=>e.key==="Enter"&&addQuickTask()} placeholder={taskFilter&&taskFilter!=="__none"?`Quick add to "${projName(taskFilter)}" — Enter`:"Quick capture a to-do — type and hit Enter"} /><button className="add" onClick={addQuickTask}>Add</button></div>
             <div className="tfilter"><select value={taskFilter} onChange={(e)=>{setTaskFilter(e.target.value);setClearConfirm(false);}}><option value="">All to-dos</option><option value="__none">Unassigned</option>{data.projects.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select>{doneVisibleCount>0 && <button className={`mini ${clearConfirm?"confirm":""}`} onClick={()=>clearConfirm?clearCompleted():setClearConfirm(true)}>{clearConfirm?`Confirm — clear ${doneVisibleCount}?`:`Clear completed (${doneVisibleCount})`}</button>}</div>
@@ -438,10 +459,12 @@ function MissionControl({ session }) {
   );
 }
 
-function ProjectRow({ p, openCount, doneCount, onViewTasks, onEdit, onDelete, confirming, onCancelConfirm }) {
-  const st = PSTATUS[p.status] || PSTATUS.active;
-  return (<div className="lrow">
+function ProjectRow({ p, openCount, doneCount, child, hasChildren, childCount, expanded, onToggleExpand, onViewTasks, onEdit, onDelete, confirming, onCancelConfirm }) {
+  const st = PSTATUS[p.status] || PSTATUS.dev;
+  return (<div className={"lrow"+(child?" child":"")}>
+    {hasChildren ? <button className="caret" onClick={onToggleExpand} title={expanded?"Collapse":"Expand"}>{expanded?"▾":"▸"}</button> : <span className="cstub">{child?"↳":""}</span>}
     <span className="lname">{p.name}</span>
+    {hasChildren && <span className="subcount" onClick={onToggleExpand}>{childCount} sub</span>}
     <span className="lmeta">{p.notes||""}</span>
     {(openCount+doneCount)>0 && <span className="lcount" onClick={onViewTasks} title="View to-dos">{openCount} open</span>}
     <span className="lstat" style={{ color:st.color, background:st.color+"1c", border:`1px solid ${st.color}3a` }}>{st.glyph} {st.label}</span>
@@ -487,7 +510,7 @@ function RowActions({ link, linkTitle, onEdit, onDelete, confirming, onCancelCon
 
 function Editor({ type, item, projects, onClose, onSave }) {
   const blank = {
-    project:{ id:uid(), name:"", status:"active", notes:"", link:"" },
+    project:{ id:uid(), name:"", status:"dev", notes:"", link:"", parent:"" },
     task:{ id:uid(), text:"", done:false, priority:"medium", due:"", notes:"", project:"" },
     domain:{ id:uid(), name:"", purpose:"", registrar:"", host:"", expiry:"", status:"live", link:"", notes:"" },
     cred:{ id:uid(), service:"", account:"", location:"RoboForm", url:"", notes:"" },
@@ -501,15 +524,16 @@ function Editor({ type, item, projects, onClose, onSave }) {
     {type==="project"&&(<><div className="field"><label>Project Name</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. Series A raise" autoFocus /></div>
       <div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{PSTATUS_ORDER.map((k)=><option key={k} value={k}>{PSTATUS[k].label}</option>)}</select></div>
       <div className="field"><label>Where it stands</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="A line or two on the current state" /></div>
+      <div className="field"><label>Parent project (optional)</label><select value={f.parent||""} onChange={(e)=>set("parent",e.target.value)}><option value="">— None (top level) —</option>{projects.filter((x)=>x.id!==f.id && !x.parent).map((x)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
       <div className="field"><label>Link</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div></>)}
     {type==="task"&&(<><div className="field"><label>To-Do</label><input value={f.text} onChange={(e)=>set("text",e.target.value)} placeholder="What needs doing?" autoFocus /></div>
-      <div className="two"><div className="field"><label>Priority</label><select value={f.priority} onChange={(e)=>set("priority",e.target.value)}>{PRIORITY_ORDER.map((k)=><option key={k} value={k}>{PRIORITY[k].label} — {k}</option>)}</select></div><div className="field"><label>Due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} /></div></div>
+      <div className="two"><div className="field"><label>Priority</label><select value={f.priority} onChange={(e)=>set("priority",e.target.value)}>{PRIORITY_ORDER.map((k)=><option key={k} value={k}>{PRIORITY[k].label} — {k}</option>)}</select></div><div className="field"><label>Due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div></div>
       <div className="field"><label>Project (optional)</label><select value={f.project} onChange={(e)=>set("project",e.target.value)}><option value="">— None —</option>{projects.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
       <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} /></div></>)}
     {type==="domain"&&(<><div className="field"><label>Domain / Site</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. app.groundworkhq.com" autoFocus /></div>
       <div className="field"><label>Purpose</label><input value={f.purpose} onChange={(e)=>set("purpose",e.target.value)} placeholder="e.g. Production app" /></div>
       <div className="two"><div className="field"><label>Registrar</label><input value={f.registrar} onChange={(e)=>set("registrar",e.target.value)} placeholder="e.g. Cloudflare" /></div><div className="field"><label>Host / Deploy</label><input value={f.host} onChange={(e)=>set("host",e.target.value)} placeholder="e.g. Vercel, AWS" /></div></div>
-      <div className="two"><div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{DSTATUS_ORDER.map((k)=><option key={k} value={k}>{DSTATUS[k].label}</option>)}</select></div><div className="field"><label>Expiry / Renewal</label><input type="date" value={f.expiry} onChange={(e)=>set("expiry",e.target.value)} /></div></div>
+      <div className="two"><div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{DSTATUS_ORDER.map((k)=><option key={k} value={k}>{DSTATUS[k].label}</option>)}</select></div><div className="field"><label>Expiry / Renewal</label><input type="date" value={f.expiry} onChange={(e)=>set("expiry",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div></div>
       <div className="field"><label>Link</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div>
       <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="DNS, SSL, owner, etc." /></div></>)}
     {type==="cred"&&(<><div className="field"><label>Service</label><input value={f.service} onChange={(e)=>set("service",e.target.value)} placeholder="e.g. GitHub, Stripe, AWS" autoFocus /></div>
