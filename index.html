@@ -64,7 +64,7 @@ const SEED = {
     { id:uid(), name:"groundworkhq.com", purpose:"Marketing site", registrar:"Cloudflare", host:"Webflow", expiry:plusDays(18), status:"live", link:"https://groundworkhq.com", notes:"Sample — note the expiry flag. Delete me." },
   ],
   credentials: [ { id:uid(), service:"AWS Console", account:"ops@groundworkhq.com", location:"RoboForm", url:"https://console.aws.amazon.com", notes:"MFA on phone. Root key NOT stored here." } ],
-  finance: { cash:null, burn:null, updated:"" },
+  finance: { cash:null, otherCosts:null, revenue:null, updated:"" },
   obligations: [
     { id:uid(), name:"SOC 2 Type II surveillance audit", category:"audit", cadence:"annual", due:plusDays(95), owner:"Eng / Compliance", link:"", notes:"Annual surveillance period with auditor.", done:false, lastCompleted:"" },
     { id:uid(), name:"Delaware franchise tax + annual report", category:"tax", cadence:"annual", due:plusDays(24), owner:"Finance", link:"https://corp.delaware.gov", notes:"Due March 1 each year.", done:false, lastCompleted:"" },
@@ -81,7 +81,7 @@ function migrate(d) {
   const pmap = { ontrack:"live", atrisk:"dev", blocked:"dev", backlog:"hold", done:"live", active:"dev", live:"live", dev:"dev", hold:"hold" };
   const projects = (d.projects||[]).map((p)=>{ const status=pmap[p.status]||"dev"; const extra=[]; if(p.deadline)extra.push("Due "+p.deadline); if(p.nextAction)extra.push("Next: "+p.nextAction); const notes=[p.notes,...extra].filter(Boolean).join(" · "); const links = Array.isArray(p.links) ? p.links.filter((l)=>l&&l.url).map((l)=>({label:l.label||"",url:l.url})) : (p.link ? [{label:"",url:p.link}] : []); return { id:p.id||uid(), name:p.name||"Untitled", status, notes, links, parent:p.parent||"" }; });
   const tasks = (d.tasks||[]).map((t)=>({ id:t.id||uid(), text:t.text||"", done:!!t.done, priority:t.priority||"medium", due:t.due||"", notes:t.notes||"", project:t.project||"" }));
-  const finance = d.finance && typeof d.finance==="object" ? { cash:(d.finance.cash??null), burn:(d.finance.burn??null), updated:d.finance.updated||"" } : { cash:null, burn:null, updated:"" };
+  const finance = d.finance && typeof d.finance==="object" ? { cash:(d.finance.cash??null), otherCosts:(d.finance.otherCosts??null), revenue:(d.finance.revenue??null), updated:d.finance.updated||"" } : { cash:null, otherCosts:null, revenue:null, updated:"" };
   const obligations = (d.obligations||[]).map((o)=>({ id:o.id||uid(), name:o.name||"Untitled", category:OCATEGORY[o.category]?o.category:"other", cadence:OCADENCE[o.cadence]?o.cadence:"annual", due:o.due||"", owner:o.owner||"", link:o.link||"", notes:o.notes||"", done:!!o.done, lastCompleted:o.lastCompleted||"" }));
   const expenses = (d.expenses||[]).map((e)=>({ id:e.id||uid(), vendor:e.vendor||"", category:ECATEGORY[e.category]?e.category:"other", amount:(e.amount===""||e.amount==null)?null:+e.amount, cadence:ECADENCE[e.cadence]?e.cadence:"monthly", renewal:e.renewal||"", owner:e.owner||"", link:e.link||"", notes:e.notes||"", active:e.active!==false }));
   return { projects, tasks, domains:d.domains||[], credentials:d.credentials||[], finance, obligations, expenses };
@@ -200,7 +200,10 @@ const css = `
 .lk-add{background:none;border:1px dashed var(--border);color:var(--cyan);border-radius:6px;cursor:pointer;padding:7px 11px;font-size:11px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;margin-top:2px;}
 .lk-add:hover{border-color:rgba(63,224,255,.5);}
 .hint{font-size:11px;color:var(--dim);line-height:1.5;margin:4px 0 0;}
-.runway{display:flex;align-items:center;gap:22px;margin:0 0 14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(180deg,rgba(63,224,255,.05),transparent);cursor:pointer;position:relative;transition:.15s;}
+.runway{display:flex;align-items:center;flex-wrap:wrap;gap:22px;margin:0 0 14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(180deg,rgba(63,224,255,.05),transparent);cursor:pointer;position:relative;transition:.15s;}
+.rw-break{flex-basis:100%;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--dim);border-top:1px solid var(--border);padding-top:10px;margin-top:2px;line-height:1.5;}
+.rw-break b{color:var(--text);font-weight:600;}
+.rw-pos{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#3fe0a0;display:block;margin-top:4px;}
 .runway:hover{border-color:rgba(63,224,255,.4);}
 .rw-main{display:flex;flex-direction:column;gap:3px;padding-right:22px;border-right:1px solid var(--border);}
 .rw-lab{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
@@ -394,7 +397,7 @@ function AuthScreen() {
 
 function MissionControl({ session }) {
   const userId = session.user.id;
-  const [data, setData] = useState({ projects: [], tasks: [], domains: [], credentials: [], finance:{ cash:null, burn:null, updated:"" }, obligations: [], expenses: [] });
+  const [data, setData] = useState({ projects: [], tasks: [], domains: [], credentials: [], finance:{ cash:null, otherCosts:null, revenue:null, updated:"" }, obligations: [], expenses: [] });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("proj");
   const [modal, setModal] = useState(null);
@@ -429,7 +432,7 @@ function MissionControl({ session }) {
   const retrySave = () => { setSaveStatus("saving"); saveRemote(userId, data).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); };
   const keyFor = (type) => ({ project:"projects", task:"tasks", domain:"domains", cred:"credentials", oblig:"obligations", expense:"expenses" }[type]);
   const saveItem = (type, item) => {
-    if(type==="finance"){ persist({ ...data, finance:{ cash:(item.cash===""||item.cash==null)?null:+item.cash, burn:(item.burn===""||item.burn==null)?null:+item.burn, updated:item.updated||todayStr() } }); setModal(null); return; }
+    if(type==="finance"){ const num=(v)=>(v===""||v==null)?null:+v; persist({ ...data, finance:{ cash:num(item.cash), otherCosts:num(item.otherCosts), revenue:num(item.revenue), updated:item.updated||todayStr() } }); setModal(null); return; }
     let it=item; if(type==="project") it={ ...item, links:(item.links||[]).filter((l)=>l&&l.url&&l.url.trim()).map((l)=>({label:(l.label||"").trim(),url:l.url.trim()})) };
     if(type==="expense") it={ ...item, amount:(item.amount===""||item.amount==null)?null:+item.amount, active:item.active!==false };
     const key=keyFor(type); const list=data[key]; const exists=list.some((x)=>x.id===it.id); persist({ ...data, [key]: exists?list.map((x)=>x.id===it.id?it:x):[...list,it] }); setModal(null);
@@ -482,15 +485,18 @@ function MissionControl({ session }) {
   if(expiring)alerts.push({t:`${expiring} expiring \u226430d`,sev:"med",go:"dom"});
   if(todayTasks)alerts.push({t:`${todayTasks} due today`,sev:"med",go:"task"});
   const fin = data.finance || {};
-  const runwayMonths = (fin.cash!=null && fin.burn!=null && fin.burn>0) ? fin.cash/fin.burn : null;
-  const runwayColor = runwayMonths==null?"var(--dim)":runwayMonths<3?"#ff5d6c":runwayMonths<6?"#ffb24a":"#3fe0a0";
-  if(runwayMonths!=null && runwayMonths<6) alerts.push({t:`runway ${runwayMonths.toFixed(1)} mo`,sev:runwayMonths<3?"hi":"med",go:"finance"});
+  const trackedSpend = (data.expenses||[]).filter((e)=>e.active).reduce((s,e)=>s+monthlyCost(e),0);
+  const netBurn = (fin.otherCosts||0) + trackedSpend - (fin.revenue||0);
+  const runwayMonths = (fin.cash==null) ? null : (netBurn<=0 ? Infinity : fin.cash/netBurn);
+  const runwayDisplay = runwayMonths==null ? "—" : (runwayMonths===Infinity ? "∞" : runwayMonths.toFixed(1));
+  const runwayColor = runwayMonths==null?"var(--dim)":runwayMonths===Infinity?"#3fe0a0":runwayMonths<3?"#ff5d6c":runwayMonths<6?"#ffb24a":"#3fe0a0";
+  if(runwayMonths!=null && runwayMonths!==Infinity && runwayMonths<6) alerts.push({t:`runway ${runwayMonths.toFixed(1)} mo`,sev:runwayMonths<3?"hi":"med",go:"finance"});
   const obOverdue=(data.obligations||[]).filter((o)=>{const a=obligAlert(o);return a&&a.kind==="overdue";}).length;
   const obSoon=(data.obligations||[]).filter((o)=>{const a=obligAlert(o);return a&&a.kind==="soon";}).length;
   if(obOverdue)alerts.push({t:`${obOverdue} obligation${obOverdue>1?"s":""} overdue`,sev:"hi",go:"oblig"});
   if(obSoon)alerts.push({t:`${obSoon} obligation${obSoon>1?"s":""} due \u226430d`,sev:"med",go:"oblig"});
   const renewSoon=(data.expenses||[]).filter((e)=>expenseAlert(e)).length;
-  const totalMonthly=(data.expenses||[]).filter((e)=>e.active).reduce((s,e)=>s+monthlyCost(e),0);
+  const totalMonthly=trackedSpend;
   if(renewSoon)alerts.push({t:`${renewSoon} renewal${renewSoon>1?"s":""} due \u226414d`,sev:"med",go:"spend"});
 
   const statSets={
@@ -537,12 +543,14 @@ function MissionControl({ session }) {
         )}
         {!loading && (
           <div className="runway" onClick={()=>setModal({type:"finance",item:data.finance})}>
-            <div className="rw-main"><span className="rw-lab">Runway</span><span className="rw-val" style={{ color:runwayColor }}>{runwayMonths!=null?runwayMonths.toFixed(1):"—"}<span className="rw-unit">mo</span></span></div>
+            <div className="rw-main"><span className="rw-lab">Runway</span><span className="rw-val" style={{ color:runwayColor }}>{runwayDisplay}{runwayMonths!=null&&runwayMonths!==Infinity&&<span className="rw-unit">mo</span>}</span>{runwayMonths===Infinity&&<span className="rw-pos">cash-flow positive</span>}</div>
             <div className="rw-sub">
               <div><span className="rw-k">Cash on hand</span><span className="rw-v">{fmtMoney(fin.cash)}</span></div>
-              <div><span className="rw-k">Monthly burn</span><span className="rw-v">{fmtMoney(fin.burn)}</span></div>
+              <div><span className="rw-k">Net burn /mo</span><span className="rw-v">{fmtMoney(netBurn)}</span></div>
+              <div><span className="rw-k">Tracked spend</span><span className="rw-v">{fmtMoney(trackedSpend)}</span></div>
               <div><span className="rw-k">As of</span><span className="rw-v">{fin.updated?fmtDate(fin.updated):"not set"}</span></div>
             </div>
+            <div className="rw-break">Net burn = <b>{fmtMoney(trackedSpend)}</b> tracked spend + <b>{fmtMoney(fin.otherCosts||0)}</b> payroll/other − <b>{fmtMoney(fin.revenue||0)}</b> revenue = <b style={{color:runwayColor}}>{fmtMoney(netBurn)}/mo</b></div>
             <button className="rw-edit" title="Update figures">✎</button>
           </div>
         )}
@@ -675,7 +683,7 @@ function Editor({ type, item, projects, onClose, onSave }) {
     task:{ id:uid(), text:"", done:false, priority:"medium", due:"", notes:"", project:"" },
     domain:{ id:uid(), name:"", purpose:"", registrar:"", host:"", expiry:"", status:"live", link:"", notes:"" },
     cred:{ id:uid(), service:"", account:"", location:"RoboForm", url:"", notes:"" },
-    finance:{ cash:"", burn:"", updated:todayStr() },
+    finance:{ cash:"", otherCosts:"", revenue:"", updated:todayStr() },
     oblig:{ id:uid(), name:"", category:"regulatory", cadence:"annual", due:"", owner:"", link:"", notes:"", done:false, lastCompleted:"" },
     expense:{ id:uid(), vendor:"", category:"saas", amount:"", cadence:"monthly", renewal:"", owner:"", link:"", notes:"", active:true },
   };
@@ -712,10 +720,11 @@ function Editor({ type, item, projects, onClose, onSave }) {
       <div className="field"><label>Where the secret lives</label><input value={f.location} onChange={(e)=>set("location",e.target.value)} placeholder="e.g. RoboForm, .env file" /></div>
       <div className="field"><label>URL</label><input value={f.url} onChange={(e)=>set("url",e.target.value)} placeholder="https://" /></div>
       <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="MFA method, rotation date, etc." /></div></>)}
-    {type==="finance"&&(<><div className="field"><label>Cash on hand (USD)</label><input type="number" value={f.cash??""} onChange={(e)=>set("cash",e.target.value)} placeholder="e.g. 850000" autoFocus /></div>
-      <div className="field"><label>Net monthly burn (USD)</label><input type="number" value={f.burn??""} onChange={(e)=>set("burn",e.target.value)} placeholder="e.g. 60000" /></div>
+    {type==="finance"&&(<><div className="field"><label>Cash on hand (USD)</label><input type="number" value={f.cash??""} onChange={(e)=>set("cash",e.target.value)} placeholder="e.g. 200000" autoFocus /></div>
+      <div className="field"><label>Payroll & other monthly costs (USD)</label><input type="number" value={f.otherCosts??""} onChange={(e)=>set("otherCosts",e.target.value)} placeholder="Salaries, contractors, rent — NOT the Spend-tab subscriptions" /></div>
+      <div className="field"><label>Monthly revenue (USD, optional)</label><input type="number" value={f.revenue??""} onChange={(e)=>set("revenue",e.target.value)} placeholder="0 if pre-revenue" /></div>
       <div className="field"><label>As of date</label><input type="date" value={f.updated||""} onChange={(e)=>set("updated",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div>
-      <p className="hint">Runway = cash ÷ monthly burn. Burn should be your net monthly cash outflow. Update whenever the figures change.</p></>)}
+      <p className="hint">Net burn = your tracked vendor/SaaS spend (pulled from the Spend tab) + payroll &amp; other costs − revenue. Don't re-enter subscriptions here — they're already counted. Runway = cash ÷ net burn.</p></>)}
     {type==="oblig"&&(<><div className="field"><label>Obligation</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. SOC 2 surveillance audit" autoFocus /></div>
       <div className="two"><div className="field"><label>Category</label><select value={f.category} onChange={(e)=>set("category",e.target.value)}>{OCATEGORY_ORDER.map((k)=><option key={k} value={k}>{OCATEGORY[k].label}</option>)}</select></div><div className="field"><label>Cadence</label><select value={f.cadence} onChange={(e)=>set("cadence",e.target.value)}>{OCADENCE_ORDER.map((k)=><option key={k} value={k}>{OCADENCE[k].label}</option>)}</select></div></div>
       <div className="two"><div className="field"><label>Next due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div><div className="field"><label>Owner</label><input value={f.owner} onChange={(e)=>set("owner",e.target.value)} placeholder="Who's responsible" /></div></div>
