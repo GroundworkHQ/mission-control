@@ -51,8 +51,8 @@ const DSTATUS_ORDER = ["live","staging","dev","parked","down"];
 const P_DASH = uid(), P_SOC = uid();
 const SEED = {
   projects: [
-    { id:P_DASH, name:"Mission Control Dashboard", status:"active", notes:"Lightweight tracker — projects, to-dos, domains, keys. Delete me once you're set up.", link:"" },
-    { id:P_SOC, name:"SOC 2 Type II Audit", status:"active", notes:"Auditor kickoff done. Collecting evidence from eng.", link:"" },
+    { id:P_DASH, name:"Mission Control Dashboard", status:"active", notes:"Lightweight tracker — projects, to-dos, domains, keys. Delete me once you're set up.", links:[] },
+    { id:P_SOC, name:"SOC 2 Type II Audit", status:"active", notes:"Auditor kickoff done. Collecting evidence from eng.", links:[] },
   ],
   tasks: [
     { id:uid(), text:"Call auditor re: access reviews", done:false, priority:"high", due:todayStr(), notes:"", project:P_SOC },
@@ -64,22 +64,50 @@ const SEED = {
     { id:uid(), name:"groundworkhq.com", purpose:"Marketing site", registrar:"Cloudflare", host:"Webflow", expiry:plusDays(18), status:"live", link:"https://groundworkhq.com", notes:"Sample — note the expiry flag. Delete me." },
   ],
   credentials: [ { id:uid(), service:"AWS Console", account:"ops@groundworkhq.com", location:"RoboForm", url:"https://console.aws.amazon.com", notes:"MFA on phone. Root key NOT stored here." } ],
+  finance: { cash:null, burn:null, updated:"" },
+  obligations: [
+    { id:uid(), name:"SOC 2 Type II surveillance audit", category:"audit", cadence:"annual", due:plusDays(95), owner:"Eng / Compliance", link:"", notes:"Annual surveillance period with auditor.", done:false, lastCompleted:"" },
+    { id:uid(), name:"Delaware franchise tax + annual report", category:"tax", cadence:"annual", due:plusDays(24), owner:"Finance", link:"https://corp.delaware.gov", notes:"Due March 1 each year.", done:false, lastCompleted:"" },
+    { id:uid(), name:"Quarterly access / user-permission review", category:"security", cadence:"quarterly", due:plusDays(8), owner:"You (COO)", link:"", notes:"Review who has access to prod, finance, and admin tools.", done:false, lastCompleted:"" },
+  ],
+  expenses: [
+    { id:uid(), vendor:"AWS", category:"infra", amount:1200, cadence:"monthly", renewal:"", owner:"Eng", link:"https://console.aws.amazon.com/billing", notes:"Production cloud.", active:true },
+    { id:uid(), vendor:"Notion", category:"saas", amount:960, cadence:"annual", renewal:plusDays(10), owner:"Ops", link:"", notes:"Sample — annual renewal coming up. Delete me.", active:true },
+    { id:uid(), vendor:"Figma", category:"saas", amount:45, cadence:"monthly", renewal:"", owner:"Design", link:"", notes:"", active:true },
+  ],
 };
 
 function migrate(d) {
   const pmap = { ontrack:"live", atrisk:"dev", blocked:"dev", backlog:"hold", done:"live", active:"dev", live:"live", dev:"dev", hold:"hold" };
-  const projects = (d.projects||[]).map((p)=>{ const status=pmap[p.status]||"dev"; const extra=[]; if(p.deadline)extra.push("Due "+p.deadline); if(p.nextAction)extra.push("Next: "+p.nextAction); const notes=[p.notes,...extra].filter(Boolean).join(" · "); return { id:p.id||uid(), name:p.name||"Untitled", status, notes, link:p.link||"", parent:p.parent||"" }; });
+  const projects = (d.projects||[]).map((p)=>{ const status=pmap[p.status]||"dev"; const extra=[]; if(p.deadline)extra.push("Due "+p.deadline); if(p.nextAction)extra.push("Next: "+p.nextAction); const notes=[p.notes,...extra].filter(Boolean).join(" · "); const links = Array.isArray(p.links) ? p.links.filter((l)=>l&&l.url).map((l)=>({label:l.label||"",url:l.url})) : (p.link ? [{label:"",url:p.link}] : []); return { id:p.id||uid(), name:p.name||"Untitled", status, notes, links, parent:p.parent||"" }; });
   const tasks = (d.tasks||[]).map((t)=>({ id:t.id||uid(), text:t.text||"", done:!!t.done, priority:t.priority||"medium", due:t.due||"", notes:t.notes||"", project:t.project||"" }));
-  return { projects, tasks, domains:d.domains||[], credentials:d.credentials||[] };
+  const finance = d.finance && typeof d.finance==="object" ? { cash:(d.finance.cash??null), burn:(d.finance.burn??null), updated:d.finance.updated||"" } : { cash:null, burn:null, updated:"" };
+  const obligations = (d.obligations||[]).map((o)=>({ id:o.id||uid(), name:o.name||"Untitled", category:OCATEGORY[o.category]?o.category:"other", cadence:OCADENCE[o.cadence]?o.cadence:"annual", due:o.due||"", owner:o.owner||"", link:o.link||"", notes:o.notes||"", done:!!o.done, lastCompleted:o.lastCompleted||"" }));
+  const expenses = (d.expenses||[]).map((e)=>({ id:e.id||uid(), vendor:e.vendor||"", category:ECATEGORY[e.category]?e.category:"other", amount:(e.amount===""||e.amount==null)?null:+e.amount, cadence:ECADENCE[e.cadence]?e.cadence:"monthly", renewal:e.renewal||"", owner:e.owner||"", link:e.link||"", notes:e.notes||"", active:e.active!==false }));
+  return { projects, tasks, domains:d.domains||[], credentials:d.credentials||[], finance, obligations, expenses };
 }
 
 async function loadRemote(userId) { const { data, error } = await sb.from("mc_state").select("data").eq("user_id", userId).maybeSingle(); if (error) throw error; return data ? data.data : null; }
-async function saveRemote(userId, payload) { const { error } = await sb.from("mc_state").upsert({ user_id:userId, data:payload, updated_at:new Date().toISOString() }); if (error) console.error(error); }
+async function saveRemote(userId, payload) { const { error } = await sb.from("mc_state").upsert({ user_id:userId, data:payload, updated_at:new Date().toISOString() }); if (error) console.error(error); return !error; }
 
 function domainAlert(d){ if(!d.expiry) return null; const diff=Math.round((new Date(d.expiry+"T00:00:00")-new Date(todayStr()+"T00:00:00"))/DAY); if(diff<0) return {kind:"expired",days:diff}; if(diff<=30) return {kind:"soon",days:diff}; return null; }
 function domScore(d){ const a=domainAlert(d); let s=0; if(a&&a.kind==="expired")s+=100; if(d.status==="down")s+=60; if(a&&a.kind==="soon")s+=40-Math.min(a.days,30); return s; }
 function taskUrgency(t){ let s=0; if(t.due){ if(t.due<todayStr())s+=50; else if(t.due===todayStr())s+=30; } s+={high:9,medium:5,low:1}[t.priority]||0; return s; }
 function fmtDate(s){ return new Date(s+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
+function fmtMoney(n){ if(n==null||n==="")return "—"; return "$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0}); }
+function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return "link"; } }
+function addMonths(s,n){ const d=new Date(s+"T00:00:00"); const day=d.getDate(); d.setMonth(d.getMonth()+n); if(d.getDate()<day) d.setDate(0); return d.toISOString().slice(0,10); }
+function obligAlert(o){ if(o.done||!o.due) return null; const diff=Math.round((new Date(o.due+"T00:00:00")-new Date(todayStr()+"T00:00:00"))/DAY); if(diff<0) return {kind:"overdue",days:diff}; if(diff<=30) return {kind:"soon",days:diff}; return null; }
+const OCATEGORY = { regulatory:{label:"Regulatory",color:"#a78bfa"}, tax:{label:"Tax",color:"#ffb24a"}, legal:{label:"Legal",color:"#3fe0ff"}, audit:{label:"Audit",color:"#3fe0a0"}, security:{label:"Security",color:"#ff8593"}, other:{label:"Other",color:"#7b8aa0"} };
+const OCATEGORY_ORDER = ["regulatory","tax","legal","audit","security","other"];
+const OCADENCE = { once:{label:"One-time",months:0}, monthly:{label:"Monthly",months:1}, quarterly:{label:"Quarterly",months:3}, semiannual:{label:"Semi-annual",months:6}, annual:{label:"Annual",months:12} };
+const OCADENCE_ORDER = ["once","monthly","quarterly","semiannual","annual"];
+const ECATEGORY = { infra:{label:"Infra / Cloud",color:"#3fe0ff"}, saas:{label:"SaaS",color:"#a78bfa"}, contractor:{label:"Contractor",color:"#3fe0a0"}, marketing:{label:"Marketing",color:"#ffb24a"}, office:{label:"Office",color:"#7b8aa0"}, legal:{label:"Legal / Pro",color:"#ff8593"}, other:{label:"Other",color:"#9fb0c4"} };
+const ECATEGORY_ORDER = ["infra","saas","contractor","marketing","office","legal","other"];
+const ECADENCE = { monthly:{label:"Monthly",per:1}, quarterly:{label:"Quarterly",per:3}, annual:{label:"Annual",per:12} };
+const ECADENCE_ORDER = ["monthly","quarterly","annual"];
+function monthlyCost(e){ return (e.amount||0)/((ECADENCE[e.cadence]||ECADENCE.monthly).per); }
+function expenseAlert(e){ if(!e.active||!e.renewal||e.cadence==="monthly") return null; const diff=Math.round((new Date(e.renewal+"T00:00:00")-new Date(todayStr()+"T00:00:00"))/DAY); if(diff>=0 && diff<=14) return {kind:"soon",days:diff}; return null; }
 
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
@@ -154,6 +182,46 @@ const css = `
 .lrow.child .lname{font-size:15px;font-weight:500;}
 .lrow.folder .lname{font-weight:700;letter-spacing:.01em;}
 .lrow.folder{background:rgba(63,224,255,.035);}
+.llinks{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0;max-width:300px;}
+.lchip{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--cyan);background:rgba(63,224,255,.08);border:1px solid rgba(63,224,255,.22);padding:2px 8px;border-radius:20px;text-decoration:none;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis;}
+.lchip:hover{background:rgba(63,224,255,.16);border-color:rgba(63,224,255,.4);}
+.linkrow{display:flex;gap:6px;margin-bottom:6px;align-items:center;}
+.linkrow .lk-label{flex:0 0 34%;min-width:0;}
+.linkrow .lk-url{flex:1;min-width:0;}
+.lk-del{background:none;border:1px solid var(--border);color:var(--dim);border-radius:6px;cursor:pointer;width:32px;flex-shrink:0;padding:8px 0;font-size:12px;}
+.lk-del:hover{color:#ff5d6c;border-color:rgba(255,93,108,.5);}
+.lk-add{background:none;border:1px dashed var(--border);color:var(--cyan);border-radius:6px;cursor:pointer;padding:7px 11px;font-size:11px;font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;margin-top:2px;}
+.lk-add:hover{border-color:rgba(63,224,255,.5);}
+.hint{font-size:11px;color:var(--dim);line-height:1.5;margin:4px 0 0;}
+.runway{display:flex;align-items:center;gap:22px;margin:0 0 14px;padding:14px 18px;border:1px solid var(--border);border-radius:12px;background:linear-gradient(180deg,rgba(63,224,255,.05),transparent);cursor:pointer;position:relative;transition:.15s;}
+.runway:hover{border-color:rgba(63,224,255,.4);}
+.rw-main{display:flex;flex-direction:column;gap:3px;padding-right:22px;border-right:1px solid var(--border);}
+.rw-lab{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);}
+.rw-val{font-family:'Saira Condensed','IBM Plex Mono',sans-serif;font-size:42px;font-weight:700;line-height:1;}
+.rw-unit{font-size:15px;margin-left:5px;opacity:.7;}
+.rw-sub{display:flex;gap:28px;flex-wrap:wrap;}
+.rw-sub>div{display:flex;flex-direction:column;gap:3px;}
+.rw-k{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);}
+.rw-v{font-size:16px;color:var(--text);font-weight:500;}
+.rw-edit{position:absolute;top:10px;right:12px;background:none;border:1px solid var(--border);color:var(--dim);border-radius:6px;width:26px;height:26px;cursor:pointer;}
+.runway:hover .rw-edit{color:var(--cyan);border-color:rgba(63,224,255,.5);}
+@media (max-width:620px){.rw-val{font-size:32px;}.runway{gap:14px;padding:12px 14px;}.rw-sub{gap:16px;}.rw-main{padding-right:14px;}}
+.syncind{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;padding:5px 9px;border-radius:6px;border:1px solid var(--border);white-space:nowrap;}
+.syncind.saved{color:#3fe0a0;border-color:rgba(63,224,162,.3);}
+.syncind.saving{color:#ffb24a;border-color:rgba(255,178,74,.3);}
+.syncind.error{color:#ff5d6c;border-color:rgba(255,93,108,.5);cursor:pointer;}
+.odue{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.03em;color:var(--text);white-space:nowrap;flex-shrink:0;}
+.odue.overdue{color:#ff5d6c;font-weight:600;}
+.odue.soon{color:#ffb24a;font-weight:600;}
+.lrow.odone{opacity:.5;}
+.lrow.odone .lname{text-decoration:line-through;}
+.iconbtn.done:hover{color:#3fe0a0;border-color:rgba(63,224,162,.5);background:rgba(63,224,162,.08);}
+.ecost{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:#3fe0a0;white-space:nowrap;flex-shrink:0;letter-spacing:.01em;}
+.ecost-u{font-size:10px;color:var(--dim);font-weight:400;margin-left:2px;}
+.lrow.paused{opacity:.45;}
+.chk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text);cursor:pointer;margin-top:4px;}
+.chk input{width:16px;height:16px;accent-color:var(--cyan);cursor:pointer;}
+.mc.light .ecost{color:#127a4a;}
 .mc input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.5;cursor:pointer;}
 .mc input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1;}
 .mc.light input[type=date]::-webkit-calendar-picker-indicator{filter:none;opacity:.6;}
@@ -261,6 +329,8 @@ const css = `
 .mc.light .lstat{ color:var(--text)!important; }
 .mc.light .iconbtn:hover{ color:#0e8fb0; border-color:rgba(14,143,176,.4); background:rgba(14,143,176,.08); }
 .mc.light .subcount{ color:#0e8fb0; background:rgba(14,143,176,.1); border-color:rgba(14,143,176,.28); }
+.mc.light .lchip{ color:#0e8fb0; background:rgba(14,143,176,.08); border-color:rgba(14,143,176,.25); }
+.mc.light .runway{ background:linear-gradient(180deg,rgba(14,143,176,.06),transparent); }
 @media (max-width:640px){.title{font-size:17px;}.eyebrow{font-size:8px;letter-spacing:.14em;}.two{grid-template-columns:1fr;}}
 `;
 
@@ -316,13 +386,14 @@ function AuthScreen() {
 
 function MissionControl({ session }) {
   const userId = session.user.id;
-  const [data, setData] = useState({ projects: [], tasks: [], domains: [], credentials: [] });
+  const [data, setData] = useState({ projects: [], tasks: [], domains: [], credentials: [], finance:{ cash:null, burn:null, updated:"" }, obligations: [], expenses: [] });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("proj");
   const [modal, setModal] = useState(null);
   const [now, setNow] = useState(new Date());
   const [confirmId, setConfirmId] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
+  const [saveStatus, setSaveStatus] = useState("saved");
   const [taskInput, setTaskInput] = useState("");
   const [taskFilter, setTaskFilter] = useState("");
   const [expanded, setExpanded] = useState(() => new Set());
@@ -346,11 +417,20 @@ function MissionControl({ session }) {
   }, [userId]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 
-  const persist = useCallback((next) => { setData(next); saveRemote(userId, next); setSavedAt(Date.now()); }, [userId]);
-  const keyFor = (type) => ({ project:"projects", task:"tasks", domain:"domains", cred:"credentials" }[type]);
-  const saveItem = (type, item) => { const key=keyFor(type); const list=data[key]; const exists=list.some((x)=>x.id===item.id); persist({ ...data, [key]: exists?list.map((x)=>x.id===item.id?item:x):[...list,item] }); setModal(null); };
+  const persist = useCallback((next) => { setData(next); setSaveStatus("saving"); saveRemote(userId, next).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); }, [userId]);
+  const retrySave = () => { setSaveStatus("saving"); saveRemote(userId, data).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); };
+  const keyFor = (type) => ({ project:"projects", task:"tasks", domain:"domains", cred:"credentials", oblig:"obligations", expense:"expenses" }[type]);
+  const saveItem = (type, item) => {
+    if(type==="finance"){ persist({ ...data, finance:{ cash:(item.cash===""||item.cash==null)?null:+item.cash, burn:(item.burn===""||item.burn==null)?null:+item.burn, updated:item.updated||todayStr() } }); setModal(null); return; }
+    let it=item; if(type==="project") it={ ...item, links:(item.links||[]).filter((l)=>l&&l.url&&l.url.trim()).map((l)=>({label:(l.label||"").trim(),url:l.url.trim()})) };
+    if(type==="expense") it={ ...item, amount:(item.amount===""||item.amount==null)?null:+item.amount, active:item.active!==false };
+    const key=keyFor(type); const list=data[key]; const exists=list.some((x)=>x.id===it.id); persist({ ...data, [key]: exists?list.map((x)=>x.id===it.id?it:x):[...list,it] }); setModal(null);
+  };
   const remove = (type, id) => { const key=keyFor(type); persist({ ...data, [key]: data[key].filter((x)=>x.id!==id) }); setConfirmId(null); };
   const toggleTask = (id) => persist({ ...data, tasks: data.tasks.map((t)=>t.id===id?{...t,done:!t.done}:t) });
+  const completeObligation = (id) => persist({ ...data, obligations: data.obligations.map((o)=>{ if(o.id!==id) return o; const c=OCADENCE[o.cadence]||OCADENCE.once; if(c.months>0 && o.due) return {...o, due:addMonths(o.due,c.months), lastCompleted:todayStr()}; return {...o, done:true, lastCompleted:todayStr()}; }) });
+  const reopenObligation = (id) => persist({ ...data, obligations: data.obligations.map((o)=>o.id===id?{...o,done:false}:o) });
+  const toggleExpense = (id) => persist({ ...data, expenses: data.expenses.map((e)=>e.id===id?{...e,active:!e.active}:e) });
   const addQuickTask = () => { const text=taskInput.trim(); if(!text)return; const project=taskFilter&&taskFilter!=="__none"?taskFilter:""; persist({ ...data, tasks:[...data.tasks,{id:uid(),text,done:false,priority:"medium",due:"",notes:"",project}] }); setTaskInput(""); };
   const viewProjectTasks = (pid) => { setTaskFilter(pid); setTab("task"); };
   const toggleExpand = (id) => setExpanded((s)=>{ const n=new Set(s); n.has(id)?n.delete(id):n.add(id); return n; });
@@ -375,6 +455,8 @@ function MissionControl({ session }) {
     return <ProjectRow key={p.id} p={p} child={child} hasChildren={kids.length>0} childCount={kids.length} expanded={expanded.has(p.id)} openCount={rel.filter((t)=>!t.done).length} doneCount={rel.filter((t)=>t.done).length} onToggleExpand={()=>toggleExpand(p.id)} onViewTasks={()=>viewProjectTasks(p.id)} onEdit={()=>setModal({type:"project",item:p})} onDelete={()=>confirmId===p.id?remove("project",p.id):setConfirmId(p.id)} confirming={confirmId===p.id} onCancelConfirm={()=>setConfirmId(null)} />;
   };
   const domains = [...data.domains].sort((a,b)=>domScore(b)-domScore(a));
+  const obligations = [...(data.obligations||[])].sort((a,b)=>{ if(!!a.done!==!!b.done) return a.done?1:-1; if(!a.due) return 1; if(!b.due) return -1; return a.due.localeCompare(b.due); });
+  const expenses = [...(data.expenses||[])].sort((a,b)=>{ if(!!a.active!==!!b.active) return a.active?-1:1; return monthlyCost(b)-monthlyCost(a); });
   const tasks = [...data.tasks].sort((a,b)=>(a.done!==b.done?(a.done?1:-1):taskUrgency(b)-taskUrgency(a)));
   const projName = (id) => (data.projects.find((p)=>p.id===id)||{}).name;
   const visibleTasks = tasks.filter((t)=>!taskFilter?true:taskFilter==="__none"?!t.project:t.project===taskFilter);
@@ -391,19 +473,32 @@ function MissionControl({ session }) {
   if(down)alerts.push({t:`${down} site${down>1?"s":""} down`,sev:"hi",go:"dom"});
   if(expiring)alerts.push({t:`${expiring} expiring \u226430d`,sev:"med",go:"dom"});
   if(todayTasks)alerts.push({t:`${todayTasks} due today`,sev:"med",go:"task"});
+  const fin = data.finance || {};
+  const runwayMonths = (fin.cash!=null && fin.burn!=null && fin.burn>0) ? fin.cash/fin.burn : null;
+  const runwayColor = runwayMonths==null?"var(--dim)":runwayMonths<3?"#ff5d6c":runwayMonths<6?"#ffb24a":"#3fe0a0";
+  if(runwayMonths!=null && runwayMonths<6) alerts.push({t:`runway ${runwayMonths.toFixed(1)} mo`,sev:runwayMonths<3?"hi":"med",go:"finance"});
+  const obOverdue=(data.obligations||[]).filter((o)=>{const a=obligAlert(o);return a&&a.kind==="overdue";}).length;
+  const obSoon=(data.obligations||[]).filter((o)=>{const a=obligAlert(o);return a&&a.kind==="soon";}).length;
+  if(obOverdue)alerts.push({t:`${obOverdue} obligation${obOverdue>1?"s":""} overdue`,sev:"hi",go:"oblig"});
+  if(obSoon)alerts.push({t:`${obSoon} obligation${obSoon>1?"s":""} due \u226430d`,sev:"med",go:"oblig"});
+  const renewSoon=(data.expenses||[]).filter((e)=>expenseAlert(e)).length;
+  const totalMonthly=(data.expenses||[]).filter((e)=>e.active).reduce((s,e)=>s+monthlyCost(e),0);
+  if(renewSoon)alerts.push({t:`${renewSoon} renewal${renewSoon>1?"s":""} due \u226414d`,sev:"med",go:"spend"});
 
   const statSets={
     proj:[{n:data.projects.length,l:"Total",c:"#d6e2ee"},{n:data.projects.filter((p)=>p.status==="dev").length,l:"In Dev",c:PSTATUS.dev.color},{n:data.projects.filter((p)=>p.status==="live").length,l:"Live",c:PSTATUS.live.color},{n:data.projects.filter((p)=>p.status==="hold").length,l:"On Hold",c:PSTATUS.hold.color}],
     task:[{n:data.tasks.filter((t)=>!t.done).length,l:"Open",c:"#d6e2ee"},{n:todayTasks,l:"Due Today",c:"#ffb24a"},{n:odTasks,l:"Overdue",c:"#ff5d6c"},{n:data.tasks.filter((t)=>t.done).length,l:"Done",c:"#3fe0ff"}],
     dom:[{n:data.domains.length,l:"Total",c:"#d6e2ee"},{n:data.domains.filter((d)=>d.status==="live").length,l:"Live",c:DSTATUS.live.color},{n:expiring,l:"Expiring",c:"#ffb24a"},{n:expired,l:"Expired",c:"#ff5d6c"},{n:down,l:"Down",c:DSTATUS.down.color}],
     reg:[{n:data.credentials.length,l:"Entries",c:"#d6e2ee"},{n:data.credentials.filter((c)=>(c.location||"").toLowerCase().includes("roboform")).length,l:"In RoboForm",c:"#3fe0ff"},{n:data.credentials.filter((c)=>c.location&&!(c.location||"").toLowerCase().includes("roboform")).length,l:"Elsewhere",c:"#7b8aa0"},{n:data.credentials.filter((c)=>c.url).length,l:"With URL",c:"#3fe0a0"}],
+    oblig:[{n:(data.obligations||[]).length,l:"Total",c:"#d6e2ee"},{n:obOverdue,l:"Overdue",c:"#ff5d6c"},{n:obSoon,l:"Due ≤30d",c:"#ffb24a"},{n:(data.obligations||[]).filter((o)=>o.cadence!=="once"&&!o.done).length,l:"Recurring",c:"#a78bfa"}],
+    spend:[{n:fmtMoney(totalMonthly),l:"Per month",c:"#3fe0a0"},{n:fmtMoney(totalMonthly*12),l:"Per year",c:"#3fe0ff"},{n:(data.expenses||[]).filter((e)=>e.active).length,l:"Active vendors",c:"#a78bfa"},{n:renewSoon,l:"Renewals ≤14d",c:"#ffb24a"}],
   };
 
   const pad=(n)=>String(n).padStart(2,"0");
   const timeStr=`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   const dateStr=now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"}).toUpperCase();
-  const newType={proj:"project",task:"task",dom:"domain",reg:"cred"}[tab];
-  const newLabel={proj:"New Project",task:"New To-Do",dom:"New Domain",reg:"New Entry"}[tab];
+  const newType={proj:"project",task:"task",dom:"domain",reg:"cred",oblig:"oblig",spend:"expense"}[tab];
+  const newLabel={proj:"New Project",task:"New To-Do",dom:"New Domain",reg:"New Entry",oblig:"New Obligation",spend:"New Vendor"}[tab];
 
   return (
     <div className={"mc" + (theme === "light" ? " light" : "")}>
@@ -414,6 +509,7 @@ function MissionControl({ session }) {
         <div className="hud-right">
           <div className="clock"><div className="t mono">{timeStr} <span style={{ color:"var(--dim)" }}>LOCAL</span></div><div>{dateStr}</div></div>
           <div className="hbtns">
+            <span className={"syncind "+saveStatus} onClick={saveStatus==="error"?retrySave:undefined} title={saveStatus==="error"?"Last save failed — tap to retry":saveStatus==="saving"?"Saving…":"All changes saved"}>{saveStatus==="error"?"⚠ Save failed":saveStatus==="saving"?"⋯ Saving":"✓ Synced"}</span>
             <button className="hbtn" onClick={toggleTheme}>{theme==="dark"?"☀ Light":"☾ Dark"}</button>
             <button className="hbtn" onClick={exportJSON}>⤓ Export</button>
             <button className="hbtn" onClick={() => fileRef.current && fileRef.current.click()}>⤒ Import</button>
@@ -427,8 +523,19 @@ function MissionControl({ session }) {
         {!loading && (
           <div className="alerts"><span className="lab">Attention</span>
             {alerts.length===0 ? <span className="nominal">◇ ALL SYSTEMS NOMINAL</span> : alerts.map((a,i)=>(
-              <button key={i} className="chip" onClick={()=>{ if(a.go==="task")setTaskFilter(""); setTab(a.go); }} style={{color:"#ff8593",borderColor:"rgba(255,93,108,.45)",background:"rgba(255,93,108,.1)"}}>{a.sev==="hi"?"▲":"◆"} {a.t}</button>
+              <button key={i} className="chip" onClick={()=>{ if(a.go==="finance"){ setModal({type:"finance",item:data.finance}); return; } if(a.go==="task")setTaskFilter(""); setTab(a.go); }} style={{color:"#ff8593",borderColor:"rgba(255,93,108,.45)",background:"rgba(255,93,108,.1)"}}>{a.sev==="hi"?"▲":"◆"} {a.t}</button>
             ))}
+          </div>
+        )}
+        {!loading && (
+          <div className="runway" onClick={()=>setModal({type:"finance",item:data.finance})}>
+            <div className="rw-main"><span className="rw-lab">Runway</span><span className="rw-val" style={{ color:runwayColor }}>{runwayMonths!=null?runwayMonths.toFixed(1):"—"}<span className="rw-unit">mo</span></span></div>
+            <div className="rw-sub">
+              <div><span className="rw-k">Cash on hand</span><span className="rw-v">{fmtMoney(fin.cash)}</span></div>
+              <div><span className="rw-k">Monthly burn</span><span className="rw-v">{fmtMoney(fin.burn)}</span></div>
+              <div><span className="rw-k">As of</span><span className="rw-v">{fin.updated?fmtDate(fin.updated):"not set"}</span></div>
+            </div>
+            <button className="rw-edit" title="Update figures">✎</button>
           </div>
         )}
         <div className="stats">{statSets[tab].map((s,i)=>(<div className="stat" key={i} style={{ "--c":s.c }}><div className="n">{s.n}</div><div className="l">{s.l}</div></div>))}</div>
@@ -437,6 +544,8 @@ function MissionControl({ session }) {
             <button className={`tab ${tab==="proj"?"active":""}`} onClick={()=>setTab("proj")}><span className="ic">▦</span>Projects <span className="c">{data.projects.length}</span></button>
             <button className={`tab ${tab==="task"?"active":""}`} onClick={()=>setTab("task")}><span className="ic">✓</span>To-Dos <span className="c">{data.tasks.filter((t)=>!t.done).length}</span></button>
             <button className={`tab ${tab==="dom"?"active":""}`} onClick={()=>setTab("dom")}><span className="ic">◎</span>Domains <span className="c">{data.domains.length}</span></button>
+            <button className={`tab ${tab==="oblig"?"active":""}`} onClick={()=>setTab("oblig")}><span className="ic">⚖</span>Compliance <span className="c">{(data.obligations||[]).length}</span></button>
+            <button className={`tab ${tab==="spend"?"active":""}`} onClick={()=>setTab("spend")}><span className="ic">$</span>Spend <span className="c">{(data.expenses||[]).length}</span></button>
             <button className={`tab ${tab==="reg"?"active":""}`} onClick={()=>setTab("reg")}><span className="ic">🗝</span>Registry <span className="c">{data.credentials.length}</span></button>
           </div>
           <button className="add" onClick={()=>setModal({type:newType,item:null})}>+ {newLabel}</button>
@@ -453,6 +562,13 @@ function MissionControl({ session }) {
           </>)
         : tab==="dom" ? (domains.length===0 ? <div className="empty"><p>NO DOMAINS REGISTERED</p><button className="add" onClick={()=>setModal({type:"domain",item:null})}>+ Add First Domain</button></div>
           : <div className="list">{domains.map((d,i)=>(<DomainRow key={d.id} d={d} onEdit={()=>setModal({type:"domain",item:d})} onDelete={()=>confirmId===d.id?remove("domain",d.id):setConfirmId(d.id)} confirming={confirmId===d.id} onCancelConfirm={()=>setConfirmId(null)} />))}</div>)
+        : tab==="oblig" ? (obligations.length===0 ? <div className="empty"><p>NO OBLIGATIONS TRACKED</p><button className="add" onClick={()=>setModal({type:"oblig",item:null})}>+ Add First Obligation</button></div>
+          : <div className="list">{obligations.map((o)=>(<ObligationRow key={o.id} o={o} onComplete={()=>completeObligation(o.id)} onReopen={()=>reopenObligation(o.id)} onEdit={()=>setModal({type:"oblig",item:o})} onDelete={()=>confirmId===o.id?remove("oblig",o.id):setConfirmId(o.id)} confirming={confirmId===o.id} onCancelConfirm={()=>setConfirmId(null)} />))}</div>)
+        : tab==="spend" ? (<>
+            <div className="note"><span>💳</span><span><b>Tracked vendor & SaaS spend — {fmtMoney(totalMonthly)}/mo ({fmtMoney(totalMonthly*12)}/yr).</b> This is a component of your total burn, not the whole thing. Pause anything you cancel rather than deleting it, to keep the record.</span></div>
+            {expenses.length===0 ? <div className="empty"><p>NO VENDORS TRACKED</p><button className="add" onClick={()=>setModal({type:"expense",item:null})}>+ Add First Vendor</button></div>
+              : <div className="list">{expenses.map((e)=>(<ExpenseRow key={e.id} e={e} onPause={()=>toggleExpense(e.id)} onResume={()=>toggleExpense(e.id)} onEdit={()=>setModal({type:"expense",item:e})} onDelete={()=>confirmId===e.id?remove("expense",e.id):setConfirmId(e.id)} confirming={confirmId===e.id} onCancelConfirm={()=>setConfirmId(null)} />))}</div>}
+          </>)
         : (<>
             <div className="note"><span>🔒</span><span><b>References only — no secrets stored here.</b> This logs which service, the account, and where the real password/key lives. Keep actual secrets in RoboForm.</span></div>
             {data.credentials.length===0 ? <div className="empty"><p>NO REGISTRY ENTRIES</p><button className="add" onClick={()=>setModal({type:"cred",item:null})}>+ Add First Entry</button></div>
@@ -476,7 +592,8 @@ function ProjectRow({ p, openCount, doneCount, child, hasChildren, childCount, e
     <span className="lmeta">{p.notes||""}</span>
     {(openCount+doneCount)>0 && <span className="lcount" onClick={onViewTasks} title="View to-dos">{openCount} open</span>}
     {!hasChildren && <span className="lstat" style={{ color:st.color, background:st.color+"1c", border:`1px solid ${st.color}3a` }}>{st.glyph} {st.label}</span>}
-    <RowActions link={p.link} onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+    {(p.links||[]).length>0 && <span className="llinks">{p.links.map((lk,idx)=>(<a key={idx} className="lchip" href={lk.url} target="_blank" rel="noreferrer" title={lk.url}>↗ {lk.label||hostOf(lk.url)}</a>))}</span>}
+    <RowActions onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
   </div>);
 }
 function TaskRow({ t, i, projectName, onToggle, onEdit, onDelete, confirming, onCancelConfirm }) {
@@ -507,9 +624,37 @@ function CredRow({ c, onEdit, onDelete, confirming, onCancelConfirm }) {
     <RowActions link={c.url} linkTitle="Open login" onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
   </div>);
 }
-function RowActions({ link, linkTitle, onEdit, onDelete, confirming, onCancelConfirm }) {
+function ObligationRow({ o, onComplete, onReopen, onEdit, onDelete, confirming, onCancelConfirm }) {
+  const cat = OCATEGORY[o.category] || OCATEGORY.other; const cad = OCADENCE[o.cadence] || OCADENCE.annual; const alert = obligAlert(o);
+  const meta = [o.owner, cad.label].filter(Boolean).join("  ·  ");
+  return (<div className={"lrow"+(alert?" flag":"")+(o.done?" odone":"")}>
+    <span className="lname">{o.name}</span>
+    <span className="lmeta">{meta}</span>
+    {o.due && <span className={"odue "+(o.done?"":alert?alert.kind:"")}>{o.done?"✓ Done":alert&&alert.kind==="overdue"?"OVERDUE · "+fmtDate(o.due):alert&&alert.kind==="soon"?(alert.days===0?"TODAY":alert.days+"d")+" · "+fmtDate(o.due):fmtDate(o.due)}</span>}
+    <span className="lstat" style={{ color:cat.color, background:cat.color+"1c", border:`1px solid ${cat.color}3a` }}>{cat.label}</span>
+    <RowActions link={o.link} linkTitle="Open filing / doc" onComplete={onComplete} onReopen={onReopen} done={o.done} onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+  </div>);
+}
+function ExpenseRow({ e, onPause, onResume, onEdit, onDelete, confirming, onCancelConfirm }) {
+  const cat = ECATEGORY[e.category] || ECATEGORY.other; const alert = expenseAlert(e);
+  const shortCad = { monthly:"mo", quarterly:"qtr", annual:"yr" }[e.cadence] || "mo";
+  const meta = [e.owner, (e.cadence!=="monthly"&&e.amount)?fmtMoney(e.amount)+"/"+shortCad:""].filter(Boolean).join("  ·  ");
+  return (<div className={"lrow"+(alert?" flag":"")+(!e.active?" paused":"")}>
+    <span className="lname">{e.vendor}</span>
+    <span className="lmeta">{meta}</span>
+    {alert && <span className="odue soon">renews {alert.days===0?"today":"in "+alert.days+"d"}</span>}
+    <span className="ecost">{fmtMoney(monthlyCost(e))}<span className="ecost-u">/mo</span></span>
+    <span className="lstat" style={{ color:cat.color, background:cat.color+"1c", border:`1px solid ${cat.color}3a` }}>{cat.label}</span>
+    <RowActions link={e.link} linkTitle="Open billing" onPause={onPause} onResume={onResume} paused={!e.active} onEdit={onEdit} onDelete={onDelete} confirming={confirming} onCancelConfirm={onCancelConfirm} />
+  </div>);
+}
+function RowActions({ link, linkTitle, onEdit, onDelete, confirming, onCancelConfirm, onComplete, onReopen, done, onPause, onResume, paused }) {
   return (<div className="lacts">
     {link && <a className="iconbtn" href={link} target="_blank" rel="noreferrer" title={linkTitle||"Open"}>↗</a>}
+    {onComplete && !done && !confirming && <button className="iconbtn done" onClick={onComplete} title="Mark done — advances recurring to next cycle">✓</button>}
+    {onReopen && done && !confirming && <button className="iconbtn" onClick={onReopen} title="Reopen">↺</button>}
+    {onPause && !paused && !confirming && <button className="iconbtn" onClick={onPause} title="Pause — exclude from spend total">⏸</button>}
+    {onResume && paused && !confirming && <button className="iconbtn done" onClick={onResume} title="Resume — count toward spend">▶</button>}
     {confirming
       ? (<><button className="iconbtn confirm" onClick={onDelete} title="Confirm delete">Delete?</button><button className="iconbtn" onClick={onCancelConfirm} title="Cancel">↩</button></>)
       : (<><button className="iconbtn" onClick={onEdit} title="Edit">✎</button><button className="iconbtn del" onClick={onDelete} title="Delete">✕</button></>)}
@@ -518,22 +663,32 @@ function RowActions({ link, linkTitle, onEdit, onDelete, confirming, onCancelCon
 
 function Editor({ type, item, projects, onClose, onSave }) {
   const blank = {
-    project:{ id:uid(), name:"", status:"dev", notes:"", link:"", parent:"" },
+    project:{ id:uid(), name:"", status:"dev", notes:"", links:[], parent:"" },
     task:{ id:uid(), text:"", done:false, priority:"medium", due:"", notes:"", project:"" },
     domain:{ id:uid(), name:"", purpose:"", registrar:"", host:"", expiry:"", status:"live", link:"", notes:"" },
     cred:{ id:uid(), service:"", account:"", location:"RoboForm", url:"", notes:"" },
+    finance:{ cash:"", burn:"", updated:todayStr() },
+    oblig:{ id:uid(), name:"", category:"regulatory", cadence:"annual", due:"", owner:"", link:"", notes:"", done:false, lastCompleted:"" },
+    expense:{ id:uid(), vendor:"", category:"saas", amount:"", cadence:"monthly", renewal:"", owner:"", link:"", notes:"", active:true },
   };
   const [f, setF] = useState(item ? { ...item } : blank[type]);
   const set = (k,v) => setF((p)=>({ ...p, [k]:v }));
-  const valid = type==="project"?f.name.trim():type==="task"?f.text.trim():type==="domain"?f.name.trim():f.service.trim();
-  const heading = { project:"Project", task:"To-Do", domain:"Domain / Site", cred:"Registry Entry" }[type];
+  const valid = type==="project"?f.name.trim():type==="task"?f.text.trim():type==="domain"?f.name.trim():type==="cred"?f.service.trim():type==="oblig"?f.name.trim():type==="expense"?f.vendor.trim():true;
+  const heading = { project:"Project", task:"To-Do", domain:"Domain / Site", cred:"Registry Entry", finance:"Financials", oblig:"Obligation", expense:"Vendor / Subscription" }[type];
   return (<div className="scrim" onClick={onClose}><div className="modal" onClick={(e)=>e.stopPropagation()}>
     <h2>{item?"Edit":"New"} {heading}</h2>
     {type==="project"&&(<><div className="field"><label>Project Name</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. Series A raise" autoFocus /></div>
       <div className="field"><label>Status</label><select value={f.status} onChange={(e)=>set("status",e.target.value)}>{PSTATUS_ORDER.map((k)=><option key={k} value={k}>{PSTATUS[k].label}</option>)}</select></div>
       <div className="field"><label>Where it stands</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="A line or two on the current state" /></div>
       <div className="field"><label>Parent project (optional)</label><select value={f.parent||""} onChange={(e)=>set("parent",e.target.value)}><option value="">— None (top level) —</option>{projects.filter((x)=>x.id!==f.id && !x.parent).map((x)=><option key={x.id} value={x.id}>{x.name}</option>)}</select></div>
-      <div className="field"><label>Link</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div></>)}
+      <div className="field"><label>Links</label>
+        {(f.links||[]).map((lk,idx)=>(<div className="linkrow" key={idx}>
+          <input className="lk-label" value={lk.label} onChange={(e)=>set("links",(f.links||[]).map((x,j)=>j===idx?{...x,label:e.target.value}:x))} placeholder="Label" />
+          <input className="lk-url" value={lk.url} onChange={(e)=>set("links",(f.links||[]).map((x,j)=>j===idx?{...x,url:e.target.value}:x))} placeholder="https://" />
+          <button type="button" className="lk-del" onClick={()=>set("links",(f.links||[]).filter((_,j)=>j!==idx))} title="Remove link">✕</button>
+        </div>))}
+        <button type="button" className="lk-add" onClick={()=>set("links",[...(f.links||[]),{label:"",url:""}])}>+ Add link</button>
+      </div></>)}
     {type==="task"&&(<><div className="field"><label>To-Do</label><input value={f.text} onChange={(e)=>set("text",e.target.value)} placeholder="What needs doing?" autoFocus /></div>
       <div className="two"><div className="field"><label>Priority</label><select value={f.priority} onChange={(e)=>set("priority",e.target.value)}>{PRIORITY_ORDER.map((k)=><option key={k} value={k}>{PRIORITY[k].label} — {k}</option>)}</select></div><div className="field"><label>Due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div></div>
       <div className="field"><label>Project (optional)</label><select value={f.project} onChange={(e)=>set("project",e.target.value)}><option value="">— None —</option>{projects.map((p)=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
@@ -549,6 +704,24 @@ function Editor({ type, item, projects, onClose, onSave }) {
       <div className="field"><label>Where the secret lives</label><input value={f.location} onChange={(e)=>set("location",e.target.value)} placeholder="e.g. RoboForm, .env file" /></div>
       <div className="field"><label>URL</label><input value={f.url} onChange={(e)=>set("url",e.target.value)} placeholder="https://" /></div>
       <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="MFA method, rotation date, etc." /></div></>)}
+    {type==="finance"&&(<><div className="field"><label>Cash on hand (USD)</label><input type="number" value={f.cash??""} onChange={(e)=>set("cash",e.target.value)} placeholder="e.g. 850000" autoFocus /></div>
+      <div className="field"><label>Net monthly burn (USD)</label><input type="number" value={f.burn??""} onChange={(e)=>set("burn",e.target.value)} placeholder="e.g. 60000" /></div>
+      <div className="field"><label>As of date</label><input type="date" value={f.updated||""} onChange={(e)=>set("updated",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div>
+      <p className="hint">Runway = cash ÷ monthly burn. Burn should be your net monthly cash outflow. Update whenever the figures change.</p></>)}
+    {type==="oblig"&&(<><div className="field"><label>Obligation</label><input value={f.name} onChange={(e)=>set("name",e.target.value)} placeholder="e.g. SOC 2 surveillance audit" autoFocus /></div>
+      <div className="two"><div className="field"><label>Category</label><select value={f.category} onChange={(e)=>set("category",e.target.value)}>{OCATEGORY_ORDER.map((k)=><option key={k} value={k}>{OCATEGORY[k].label}</option>)}</select></div><div className="field"><label>Cadence</label><select value={f.cadence} onChange={(e)=>set("cadence",e.target.value)}>{OCADENCE_ORDER.map((k)=><option key={k} value={k}>{OCADENCE[k].label}</option>)}</select></div></div>
+      <div className="two"><div className="field"><label>Next due</label><input type="date" value={f.due} onChange={(e)=>set("due",e.target.value)} onClick={(e)=>{try{e.currentTarget.showPicker&&e.currentTarget.showPicker();}catch(_){}}} /></div><div className="field"><label>Owner</label><input value={f.owner} onChange={(e)=>set("owner",e.target.value)} placeholder="Who's responsible" /></div></div>
+      <div className="field"><label>Link (filing portal, doc)</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div>
+      <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="Filing details, reference numbers, etc." /></div>
+      {f.lastCompleted && <p className="hint">Last completed {fmtDate(f.lastCompleted)}. Marking done advances the next due date by the cadence.</p>}</>)}
+    {type==="expense"&&(<><div className="field"><label>Vendor / Service</label><input value={f.vendor} onChange={(e)=>set("vendor",e.target.value)} placeholder="e.g. AWS, Notion, Figma" autoFocus /></div>
+      <div className="two"><div className="field"><label>Category</label><select value={f.category} onChange={(e)=>set("category",e.target.value)}>{ECATEGORY_ORDER.map((k)=><option key={k} value={k}>{ECATEGORY[k].label}</option>)}</select></div><div className="field"><label>Billing cadence</label><select value={f.cadence} onChange={(e)=>set("cadence",e.target.value)}>{ECADENCE_ORDER.map((k)=><option key={k} value={k}>{ECADENCE[k].label}</option>)}</select></div></div>
+      <div className="two"><div className="field"><label>Amount per cycle (USD)</label><input type="number" value={f.amount??""} onChange={(e)=>set("amount",e.target.value)} placeholder="e.g. 1200" /></div><div className="field"><label>Next renewal (optional)</label><input type="date" value={f.renewal} onChange={(e)=>set("renewal",e.target.value)} onClick={(ev)=>{try{ev.currentTarget.showPicker&&ev.currentTarget.showPicker();}catch(_){}}} /></div></div>
+      <div className="field"><label>Owner</label><input value={f.owner} onChange={(e)=>set("owner",e.target.value)} placeholder="Team or person" /></div>
+      <div className="field"><label>Billing link (optional)</label><input value={f.link} onChange={(e)=>set("link",e.target.value)} placeholder="https://" /></div>
+      <div className="field"><label>Notes</label><textarea value={f.notes} onChange={(e)=>set("notes",e.target.value)} placeholder="Plan, seats, contract terms, etc." /></div>
+      <label className="chk"><input type="checkbox" checked={f.active!==false} onChange={(e)=>set("active",e.target.checked)} /> Active — counts toward monthly spend</label>
+      {f.amount && <p className="hint">Normalizes to {fmtMoney((+f.amount||0)/((ECADENCE[f.cadence]||ECADENCE.monthly).per))}/mo.</p>}</>)}
     <div className="mfoot"><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn go" disabled={!valid} style={{ opacity:valid?1:0.4, width:"auto" }} onClick={()=>valid&&onSave(f)}>{item?"Save":"Add"}</button></div>
   </div></div>);
 }
