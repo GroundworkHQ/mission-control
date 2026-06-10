@@ -38,8 +38,9 @@ const sb = configured ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) :
 
 const DAY = 86400000;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const todayStr = () => new Date().toISOString().slice(0, 10);
-const plusDays = (n) => new Date(Date.now() + n * DAY).toISOString().slice(0, 10);
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const todayStr = () => ymd(new Date());
+const plusDays = (n) => ymd(new Date(Date.now() + n * DAY));
 
 const PSTATUS = { dev:{label:"In Development",color:"#a78bfa",glyph:"▸"}, live:{label:"Live",color:"#3fe0a0",glyph:"●"}, hold:{label:"On Hold",color:"#ffb24a",glyph:"◐"} };
 const PSTATUS_ORDER = ["dev","live","hold"]; const PSORT = { dev:0, live:1, hold:2 };
@@ -87,8 +88,10 @@ function migrate(d) {
   return { projects, tasks, domains:d.domains||[], credentials:d.credentials||[], finance, obligations, expenses };
 }
 
-async function loadRemote(userId) { const { data, error } = await sb.from("mc_state").select("data").eq("user_id", userId).maybeSingle(); if (error) throw error; return data ? data.data : null; }
-async function saveRemote(userId, payload) { const { error } = await sb.from("mc_state").upsert({ user_id:userId, data:payload, updated_at:new Date().toISOString() }); if (error) console.error(error); return !error; }
+const WORKSPACE_ID = "workspace";
+async function loadShared() { const { data, error } = await sb.from("mc_shared").select("data").eq("id", WORKSPACE_ID).maybeSingle(); if (error) throw error; return data ? data.data : null; }
+async function loadOldUserRow(userId) { try { const { data } = await sb.from("mc_state").select("data").eq("user_id", userId).maybeSingle(); return data ? data.data : null; } catch (e) { return null; } }
+async function saveShared(payload) { const { error } = await sb.from("mc_shared").upsert({ id:WORKSPACE_ID, data:payload, updated_at:new Date().toISOString() }); if (error) console.error(error); return !error; }
 
 function domainAlert(d){ if(!d.expiry) return null; const diff=Math.round((new Date(d.expiry+"T00:00:00")-new Date(todayStr()+"T00:00:00"))/DAY); if(diff<0) return {kind:"expired",days:diff}; if(diff<=30) return {kind:"soon",days:diff}; return null; }
 function domScore(d){ const a=domainAlert(d); let s=0; if(a&&a.kind==="expired")s+=100; if(d.status==="down")s+=60; if(a&&a.kind==="soon")s+=40-Math.min(a.days,30); return s; }
@@ -96,7 +99,7 @@ function taskUrgency(t){ let s=0; if(t.due){ if(t.due<todayStr())s+=50; else if(
 function fmtDate(s){ return new Date(s+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}); }
 function fmtMoney(n){ if(n==null||n==="")return "—"; return "$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0}); }
 function hostOf(u){ try{ return new URL(u).hostname.replace(/^www\./,""); }catch(e){ return "link"; } }
-function addMonths(s,n){ const d=new Date(s+"T00:00:00"); const day=d.getDate(); d.setMonth(d.getMonth()+n); if(d.getDate()<day) d.setDate(0); return d.toISOString().slice(0,10); }
+function addMonths(s,n){ const d=new Date(s+"T00:00:00"); const day=d.getDate(); d.setMonth(d.getMonth()+n); if(d.getDate()<day) d.setDate(0); return ymd(d); }
 function obligAlert(o){ if(o.done||!o.due) return null; const diff=Math.round((new Date(o.due+"T00:00:00")-new Date(todayStr()+"T00:00:00"))/DAY); if(diff<0) return {kind:"overdue",days:diff}; if(diff<=30) return {kind:"soon",days:diff}; return null; }
 const OCATEGORY = { regulatory:{label:"Regulatory",color:"#a78bfa"}, tax:{label:"Tax",color:"#ffb24a"}, legal:{label:"Legal",color:"#3fe0ff"}, audit:{label:"Audit",color:"#3fe0a0"}, security:{label:"Security",color:"#ff8593"}, other:{label:"Other",color:"#7b8aa0"} };
 const OCATEGORY_ORDER = ["regulatory","tax","legal","audit","security","other"];
@@ -417,10 +420,10 @@ function MissionControl({ session }) {
     let alive = true;
     (async () => {
       try {
-        const remote = await loadRemote(userId);
+        const remote = await loadShared();
         if (!alive) return;
-        if (remote) { const m = migrate(remote); setData(m); }
-        else { setData(SEED); await saveRemote(userId, SEED); }
+        if (remote) { setData(migrate(remote)); }
+        else { const old = await loadOldUserRow(userId); const seed = old ? migrate(old) : SEED; setData(seed); await saveShared(seed); }
       } catch (e) { console.error(e); }
       setLoading(false);
     })();
@@ -428,8 +431,8 @@ function MissionControl({ session }) {
   }, [userId]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
 
-  const persist = useCallback((next) => { setData(next); setSaveStatus("saving"); saveRemote(userId, next).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); }, [userId]);
-  const retrySave = () => { setSaveStatus("saving"); saveRemote(userId, data).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); };
+  const persist = useCallback((next) => { setData(next); setSaveStatus("saving"); saveShared(next).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); }, []);
+  const retrySave = () => { setSaveStatus("saving"); saveShared(data).then((ok)=>{ setSaveStatus(ok?"saved":"error"); if(ok) setSavedAt(Date.now()); }); };
   const keyFor = (type) => ({ project:"projects", task:"tasks", domain:"domains", cred:"credentials", oblig:"obligations", expense:"expenses" }[type]);
   const saveItem = (type, item) => {
     if(type==="finance"){ const num=(v)=>(v===""||v==null)?null:+v; persist({ ...data, finance:{ cash:num(item.cash), otherCosts:num(item.otherCosts), revenue:num(item.revenue), updated:item.updated||todayStr() } }); setModal(null); return; }
