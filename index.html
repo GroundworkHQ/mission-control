@@ -123,14 +123,21 @@ const css = `
 .mono{font-family:'IBM Plex Mono',monospace;}
 .mc header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,rgba(5,8,14,.97),rgba(5,8,14,.78));backdrop-filter:blur(10px);border-bottom:1px solid var(--border);box-shadow:0 1px 0 rgba(63,224,255,.12),0 8px 30px rgba(0,0,0,.5);}
 .hbar{max-width:1080px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
-.brand{display:flex;align-items:center;gap:12px;}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 12px var(--cyan);animation:pulse 2.4s infinite;}
+.brand{display:flex;align-items:center;gap:14px;}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);animation:pulse 2.4s infinite;flex-shrink:0;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.emblem{flex-shrink:0;line-height:0;filter:drop-shadow(0 0 9px rgba(63,224,255,.35));}
+.emblem svg{display:block;}
+.em-ring{transform-origin:24px 24px;animation:spin 16s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.em-core{animation:pulse 2.4s infinite;}
+.hdiv{width:1px;height:40px;background:linear-gradient(180deg,transparent,rgba(63,224,255,.55),transparent);flex-shrink:0;}
 .badge{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:18px;letter-spacing:.06em;color:var(--amber);border:1px solid rgba(255,178,74,.6);border-radius:7px;padding:5px 9px;line-height:1;background:rgba(255,178,74,.08);box-shadow:0 0 16px rgba(255,178,74,.25),inset 0 0 12px rgba(255,178,74,.08);}
 .lockup{display:flex;flex-direction:column;gap:3px;}
-.title{font-family:'Saira Condensed',sans-serif;font-weight:700;letter-spacing:.16em;font-size:20px;text-transform:uppercase;text-shadow:0 0 18px rgba(63,224,255,.25);}
-.title b{color:var(--amber);text-shadow:0 0 18px rgba(255,178,74,.5);}
-.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--cyan);text-transform:uppercase;opacity:.8;}
+.title{font-family:'Saira Condensed',sans-serif;font-weight:700;letter-spacing:.14em;font-size:27px;text-transform:uppercase;line-height:.95;text-shadow:0 0 20px rgba(63,224,255,.3);}
+.title b{color:var(--amber);text-shadow:0 0 20px rgba(255,178,74,.55);}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.22em;color:var(--cyan);text-transform:uppercase;opacity:.85;}
+.subline{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;display:flex;align-items:center;gap:6px;margin-top:1px;}
 .hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
 .clock{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim);text-align:right;line-height:1.4;letter-spacing:.06em;}
 .clock .t{color:var(--cyan);font-size:14px;text-shadow:0 0 10px rgba(63,224,255,.4);}
@@ -302,6 +309,7 @@ const css = `
 .mc.light .scan{ display:none; }
 .mc.light header{ background:rgba(255,255,255,.92); box-shadow:0 1px 0 var(--border),0 2px 10px rgba(20,30,50,.05); }
 .mc.light .title,.mc.light .title b,.mc.light .clock .t,.mc.light .stat .n,.mc.light .eyebrow,.mc.light .nominal{ text-shadow:none; }
+.mc.light .emblem{ filter:drop-shadow(0 0 5px rgba(14,143,176,.28)); }
 .mc.light .stat,.mc.light .alerts,.mc.light .tabs,.mc.light .card,.mc.light .task{ box-shadow:0 1px 2px rgba(20,30,50,.06); }
 .mc.light .stat::before,.mc.light .fill,.mc.light .check.on,.mc.light .add,.mc.light .tab.active,.mc.light .btn.go{ box-shadow:none; }
 .mc.light .stat .n{ color:var(--text); }
@@ -331,7 +339,7 @@ const css = `
 .mc.light .subcount{ color:#0e8fb0; background:rgba(14,143,176,.1); border-color:rgba(14,143,176,.28); }
 .mc.light .lchip{ color:#0e8fb0; background:rgba(14,143,176,.08); border-color:rgba(14,143,176,.25); }
 .mc.light .runway{ background:linear-gradient(180deg,rgba(14,143,176,.06),transparent); }
-@media (max-width:640px){.title{font-size:17px;}.eyebrow{font-size:8px;letter-spacing:.14em;}.two{grid-template-columns:1fr;}}
+@media (max-width:640px){.title{font-size:21px;}.eyebrow{font-size:8px;letter-spacing:.14em;}.emblem svg{width:34px;height:34px;}.hdiv{height:32px;}.subline{font-size:8px;}.two{grid-template-columns:1fr;}}
 `;
 
 function App() {
@@ -505,7 +513,7 @@ function MissionControl({ session }) {
       <style>{css}</style>
       <div className="scan" />
       <header><div className="hbar">
-        <div className="brand"><span className="dot" /><div className="lockup"><span className="eyebrow">Innovative Blockchain Solutions</span><span className="title">Mission <b>Control</b></span></div></div>
+        <div className="brand"><span className="emblem"><svg viewBox="0 0 48 48" width="44" height="44" aria-hidden="true"><polygon points="24,3 42,13.5 42,34.5 24,45 6,34.5 6,13.5" fill="none" stroke="var(--cyan)" strokeWidth="1.2"/><g className="em-ring"><polygon points="24,9 37,16.5 37,31.5 24,39 11,31.5 11,16.5" fill="none" stroke="var(--amber)" strokeWidth="1" opacity="0.5"/></g><line x1="24" y1="13" x2="24" y2="35" stroke="var(--cyan)" strokeWidth="0.7" opacity="0.35"/><line x1="13" y1="24" x2="35" y2="24" stroke="var(--cyan)" strokeWidth="0.7" opacity="0.35"/><circle className="em-core" cx="24" cy="24" r="3.6" fill="var(--cyan)"/></svg></span><span className="hdiv" /><div className="lockup"><span className="eyebrow">Innovative Blockchain Solutions</span><span className="title">Mission <b>Control</b></span><span className="subline"><span className="dot" /> Operations Console</span></div></div>
         <div className="hud-right">
           <div className="clock"><div className="t mono">{timeStr} <span style={{ color:"var(--dim)" }}>LOCAL</span></div><div>{dateStr}</div></div>
           <div className="hbtns">
